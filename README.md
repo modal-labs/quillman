@@ -4,7 +4,7 @@ A complete chat app that transcribes audio in real-time, streams back a response
 
 This repo is meant to serve as a starting point for your own language model-based apps, as well as a playground for experimentation. Contributions are welcome and encouraged!
 
-![voicechat-demo](https://user-images.githubusercontent.com/5786378/233541821-ea13c0d0-1104-42e4-8d0a-e9c72f738f97.gif)
+![quillman](https://user-images.githubusercontent.com/5786378/233804923-c13627de-97db-4050-a36b-62d955db9c19.gif)
 
 The language model used is [Vicuna](https://github.com/lm-sys/FastChat), and we're planning on adding support for more models soon (requests and contributions welcome). [OpenAI Whisper](https://github.com/openai/whisper) is used for transcription, and [Metavoice Tortoise TTS](https://github.com/metavoicexyz/tortoise-tts) is used for text-to-speech. The entire app, including the frontend, is made to be deployed serverlessly on [Modal](http://modal.com/).
 
