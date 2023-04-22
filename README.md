@@ -20,6 +20,8 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 4. Tortoise text-to-speech module ([`src/tts.py`](./src/tts.py))
 5. Vicuna language model module ([`src/llm_vicuna.py`](./src/llm_vicuna.py))
 
+Read the accompanying [docs](https://modal.com/docs/guide/llm-voice-chat) for a detailed look at each of these components.
+
 ## Developing locally
 
 ### Requirements
