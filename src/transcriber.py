@@ -19,7 +19,7 @@ def download_model():
 
 
 transcriber_image = (
-    Image.debian_slim()
+    Image.debian_slim(python_version="3.10.8")
     .apt_install("git", "ffmpeg")
     .pip_install(
         "https://github.com/openai/whisper/archive/v20230314.tar.gz",
