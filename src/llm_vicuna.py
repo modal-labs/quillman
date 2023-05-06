@@ -6,12 +6,26 @@ Path to weights provided for illustration purposes only,
 please check the license before using for commercial purposes!
 """
 import time
+from pathlib import Path
 
 from modal import Image, method
 
 from .common import stub
 
 MODEL_NAME = "anon8231489123/vicuna-13b-GPTQ-4bit-128g"
+
+
+def download_model():
+    from huggingface_hub import snapshot_download
+
+    # Match what FastChat expects
+    # https://github.com/thisserand/FastChat/blob/4a57c928a906705404eae06f7a44b4da45828487/download-model.py#L203
+    output_folder = f"{'_'.join(MODEL_NAME.split('/')[-2:])}"
+
+    snapshot_download(
+        local_dir=Path("/FastChat", "models", output_folder),
+        repo_id=MODEL_NAME,
+    )
 
 
 stub.vicuna_image = (
@@ -33,7 +47,7 @@ stub.vicuna_image = (
         "cd /FastChat/repositories/GPTQ-for-LLaMa && python setup_cuda.py install",
         gpu="any",
     )
-    .run_commands(f"cd /FastChat && python download-model.py {MODEL_NAME}")
+    .run_function(download_model)
 )
 
 ""
