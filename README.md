@@ -15,7 +15,7 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 ## File structure
 
 1. React frontend ([`src/frontend/`](./src/frontend/))
-2. FastAPI server ([`src/api.py`](./src/api.py))
+2. FastAPI server ([`src/app.py`](./src/app.py))
 3. Whisper transcription module ([`src/transcriber.py`](./src/transcriber.py))
 4. Tortoise text-to-speech module ([`src/tts.py`](./src/tts.py))
 5. Vicuna language model module ([`src/llm_vicuna.py`](./src/llm_vicuna.py))
