@@ -29,7 +29,7 @@ def download_model():
 
 
 stub.vicuna_image = (
-    Image.from_dockerhub(
+    Image.from_registry(
         "nvidia/cuda:12.2.0-devel-ubuntu20.04",
         setup_dockerfile_commands=[
             "RUN apt-get update",
