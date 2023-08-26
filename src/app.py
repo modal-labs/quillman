@@ -9,7 +9,7 @@ from pathlib import Path
 from modal import Mount, asgi_app
 
 from .common import stub
-from .llm_vicuna import Vicuna
+from .llm_vicuna import AiPhoneModel
 from .transcriber import Whisper
 from .tts import Tortoise
 
@@ -31,7 +31,7 @@ def web():
 
     web_app = FastAPI()
     transcriber = Whisper()
-    llm = Vicuna()
+    llm = AiPhoneModel()
     tts = Tortoise()
 
     @web_app.post("/transcribe")
