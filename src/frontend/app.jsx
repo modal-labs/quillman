@@ -18,7 +18,7 @@ const INDICATOR_TYPE = {
 };
 
 const MODELS = [
-  { id: "vicuna-13b-4bit", label: "Vicuna 13B (4-bit)" },
+  { id: "langchain", label: "Cohere + OpenAI" },
   // { id: "alpaca-lora-7b", label: "Alpaca LORA 7B" },
 ];
 

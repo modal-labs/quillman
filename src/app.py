@@ -58,6 +58,7 @@ def web():
 
         def speak(sentence, is_dialtones=False):
             if tts_enabled:
+                print(f"This is sentence: {sentence} and is_dialtones: {is_dialtones}")
                 if not is_dialtones:
                     fc = tts.speak.spawn(sentence)
                     return {
@@ -65,6 +66,7 @@ def web():
                         "value": fc.object_id,
                     }
                 else:
+                    print(f"Inside dialtones and is sentence: {sentence} and is_dialtones: {is_dialtones}")
                     fc = tts.dialtones.spawn(sentence)
                     return {
                         "type": "audio",
@@ -78,7 +80,7 @@ def web():
 
         def gen():
             sentence = ""
-            is_dialtone_func = False
+            is_dialtone = False
             for response in llm.generate.call(body["input"], body["history"]):
                 print(f"This is llm generate response: {response}")
                 segment = response['response']
@@ -95,11 +97,11 @@ def web():
                         print(f"The sentence to speak is: {prev_sentence}")
                         yield speak(prev_sentence, is_dialtones=is_dialtone)
                         sentence = new_sentence
-                        is_dialtone_func = is_dialtone
+                        is_dialtone = is_dialtone
 
             if sentence:
                 print(f"The sentence to speak is: {sentence}")
-                yield speak(sentence, is_dialtone_func)
+                yield speak(sentence, is_dialtone)
 
         def gen_serialized():
             for i in gen():

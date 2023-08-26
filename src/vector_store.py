@@ -1,4 +1,3 @@
-from langchain.schema.document import Document
 from typing import List
 import os
 
@@ -12,7 +11,7 @@ def get_mongo_client():
     return MongoClient(
         os.getenv("MONGODB_ATLAS_CLUSTER_URI"),
         tls=True,
-        tlsCertificateKeyFile=os.getenv("MONGODB_PEM_LOCATION"),
+        tlsCertificateKeyFile="/pem_files/mongo.pem",
         server_api=ServerApi("1"),
     )
 
@@ -32,7 +31,7 @@ def return_relevant_docs(
     db_name,
     collection_name,
     index_name,
-) -> List[Document]:
+):
     from langchain.vectorstores import MongoDBAtlasVectorSearch
 
     collection = mongo_client[db_name][collection_name]
@@ -45,7 +44,7 @@ def return_relevant_docs(
 
 
 def add_docs(
-    docs: List[Document],
+    docs,
     mongo_client,
     emb_definition,
     db_name,
