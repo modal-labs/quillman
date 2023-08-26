@@ -8,7 +8,7 @@ const { useMachine } = XStateReact;
 const SILENT_DELAY = 4000; // in milliseconds
 const CANCEL_OLD_AUDIO = false; // TODO: set this to true after cancellations don't terminate containers.
 const INITIAL_MESSAGE =
-  "Hi I am AI Phone Calling Assistant. I can make calls on your behalf";
+    "Please call your Charles Schwab customer service hotline and put the phone speaker next to the microphone"
 
 const INDICATOR_TYPE = {
   TALKING: "talking",
@@ -135,14 +135,16 @@ function Sidebar({
             className="flex items-center justify-center w-8 h-8 min-w-8 min-h-8 fill-zinc-300 hover:fill-zinc-50"
             onClick={() => setIsTortoiseOn(!isTortoiseOn)}
           >
-            {isTortoiseOn ? <FaceIcon /> : <BotIcon />}
+            <FaceIcon />
+            {/*{isTortoiseOn ? <FaceIcon /> : <BotIcon />}*/}
           </button>
 
           <span
             className="group-hover:opacity-100 transition-opacity bg-zinc-900 px-1 text-sm text-zinc-100 rounded-md absolute left-1/2 
     -translate-x-1/2 translate-y-1/2 w-fit opacity-0 m-2 mx-auto"
           >
-            {isTortoiseOn ? "TTS (natural; slow)" : "TTS (system; fast)"}
+            "Ben Voice"
+            {/*{isTortoiseOn ? "TTS (natural; slow)" : "TTS (system; fast)"}*/}
           </span>
         </div>
       </div>
@@ -525,7 +527,8 @@ function App() {
         }
       }
 
-      if (!isTortoiseOn && playQueueRef.current) {
+      if (playQueueRef.current) {
+      // if (!isTortoiseOn && playQueueRef.current) {
         while (
           playQueueRef.current.call_ids.length ||
           playQueueRef.current._isProcessing
