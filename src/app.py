@@ -9,7 +9,7 @@ from pathlib import Path
 from modal import Mount, asgi_app
 
 from .common import stub
-from .llm_vicuna import AiPhoneModel
+from .llm_model import AiPhoneModel
 from .transcriber import Whisper
 from .tts import ElevenVoice
 
