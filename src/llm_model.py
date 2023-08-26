@@ -6,12 +6,11 @@ Path to weights provided for illustration purposes only,
 please check the license before using for commercial purposes!
 """
 import time
-from pathlib import Path
 
 from modal import Image, method, Secret
-from .common import stub
 
-
+from vector_store import extract_pii
+from .common import get_openai_conversation_model, stub
 
 
 stub.ai_phone_called_model_image = (
@@ -23,7 +22,7 @@ stub.ai_phone_called_model_image = (
     )
     .apt_install("git", "gcc", "build-essential")
     .run_commands(
-        "pip install modal langchain openai pydantic",
+        "pip install modal langchain openai cohere pymongo pydantic",
     )
 )
 
@@ -37,16 +36,19 @@ if stub.is_inside(stub.ai_phone_called_model_image):
         "ignore", category=UserWarning, message="TypedStorage is deprecated"
     )
 
-    from langchain.prompts import PromptTemplate, ChatPromptTemplate, HumanMessagePromptTemplate
-    from langchain.llms import OpenAI
-    from langchain.chat_models import ChatOpenAI
+    from langchain.prompts import (
+        PromptTemplate,
+    )
 
     from langchain.output_parsers import PydanticOutputParser
-    from pydantic import BaseModel, Field, validator
-    from typing import List
+    from pydantic import BaseModel, Field
 
 
-@stub.cls(image=stub.ai_phone_called_model_image, container_idle_timeout=300, secret=Secret.from_dotenv())
+@stub.cls(
+    image=stub.ai_phone_called_model_image,
+    container_idle_timeout=300,
+    secret=Secret.from_dotenv(),
+)
 class AiPhoneModel:
     def __enter__(self):
         t0 = time.time()
@@ -59,12 +61,11 @@ class AiPhoneModel:
         print(f"The utterance history is: {history}")
         if input == "":
             return
-        model_name = 'gpt-4-0613'
-        temperature = 0.0
-        model = OpenAI(model_name=model_name, temperature=temperature)
 
         class InitialOutput(BaseModel):
-            personal_information: str = Field(description="What is the personal information required?")
+            personal_information: str = Field(
+                description="What is the personal information required?"
+            )
             should_press_buttons: bool = Field(description="Do I press buttons?")
 
         # Set up a parser + inject instructions into the prompt template.
@@ -99,31 +100,48 @@ class AiPhoneModel:
         prompt = PromptTemplate(
             template=template_str,
             input_variables=["query"],
-            partial_variables={"format_instructions": initial_output_parser.get_format_instructions()}
+            partial_variables={
+                "format_instructions": initial_output_parser.get_format_instructions()
+            },
         )
         _input = prompt.format_prompt(query=input)
+        model = get_openai_conversation_model()
         output = model(_input.to_string())
         print(f"THIS IS OUTPUT of llm preparse {output}")
         initial_output_parser.parse(output)
-        
-        print(f"Output generated in {time.time() - t0:.2f}s")        
-        response = "Yes" if {initial_output_parser.parse(output).should_press_buttons} == True else "No"
-        print(f"Response for buttons is: {response} {initial_output_parser.parse(output)}")
+
+        print(f"Output generated in {time.time() - t0:.2f}s")
+        response = (
+            "Yes"
+            if {initial_output_parser.parse(output).should_press_buttons} == True
+            else "No"
+        )
+        print(
+            f"Response for buttons is: {response} {initial_output_parser.parse(output)}"
+        )
         if {initial_output_parser.parse(output).personal_information} == "None":
             yield {
-                'response': f"Okay I am listening.",
-                'should_press_buttons': initial_output_parser.parse(output).should_press_buttons,
-                'personal_information': initial_output_parser.parse(output).personal_information
-            } 
+                "response": f"Okay I am listening.",
+                "should_press_buttons": initial_output_parser.parse(
+                    output
+                ).should_press_buttons,
+                "personal_information": initial_output_parser.parse(
+                    output
+                ).personal_information,
+            }
         else:
             response = f"Let me look for my {initial_output_parser.parse(output).personal_information} and I will be right back."
             yield {
-                'response': response,
-                'should_press_buttons': initial_output_parser.parse(output).should_press_buttons,
-                'personal_information': initial_output_parser.parse(output).personal_information
+                "response": response,
+                "should_press_buttons": initial_output_parser.parse(
+                    output
+                ).should_press_buttons,
+                "personal_information": initial_output_parser.parse(
+                    output
+                ).personal_information,
             }
 
-        
+        extract_pii(initial_output_parser.parse(output).personal_information)
 
 
 # For local testing, run `modal run -q src.llm_vicuna --input "Where is the best sushi in New York?"`
