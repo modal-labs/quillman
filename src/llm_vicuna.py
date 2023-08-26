@@ -30,7 +30,7 @@ def download_model():
 
 stub.vicuna_image = (
     Image.from_registry(
-        "nvidia/cuda:12.2.0-devel-ubuntu20.04",
+        "nvidia/cuda:11.7.1-devel-ubuntu20.04",
         setup_dockerfile_commands=[
             "RUN apt-get update",
             "RUN apt-get install -y python3 python3-pip python-is-python3",
