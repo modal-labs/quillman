@@ -14,12 +14,16 @@ from .transcriber import Whisper
 from .tts import ElevenVoice
 
 static_path = Path(__file__).with_name("frontend").resolve()
+phonesounds_path = Path(__file__).parent.with_name("phonesounds").resolve()
 
 PUNCTUATION = [".", "?", "!", ":", ";", "*"]
 
 
 @stub.function(
-    mounts=[Mount.from_local_dir(static_path, remote_path="/assets")],
+    mounts=[
+        Mount.from_local_dir(static_path, remote_path="/assets"),
+        Mount.from_local_dir(phonesounds_path, remote_path="/phonesounds")
+    ],
     container_idle_timeout=300,
     timeout=600,
 )

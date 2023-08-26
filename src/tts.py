@@ -9,18 +9,14 @@ copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 
 import io
 from modal import Image, method
+import platform
 from .common import stub
 
 eleven_image = (
-    Image.debian_slim(python_version="3.10.8")  # , requirements_path=req)
+    Image.debian_slim(python_version="3.10.8")
     .apt_install("git", "libsndfile-dev", "ffmpeg", "curl")
     .pip_install(
-        # TODO: remove all these
-        # "torch==2.0.0",
-        # "torchvision==0.15.1",
-        # "torchaudio==2.0.1",
         "pydub==0.25.1",
-        # "transformers==4.25.1",
         "elevenlabs==0.2.24",
         extra_index_url="https://download.pytorch.org/whl/cu117",
     )
@@ -33,7 +29,8 @@ eleven_image = (
     timeout=180,
 )
 class ElevenVoice:
-    TONE_FOLDER = "phonesounds"
+    # check if local or modal
+    TONE_FOLDER = "phonesounds" if platform.system() == "darwin" else "/phonesounds"
     VALID_TONES = set(list("#0123456789"))
 
     def __enter__(self):
