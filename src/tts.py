@@ -9,8 +9,6 @@ copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 
 import io
 from modal import Image, method
-from elevenlabs import generate
-import pydub
 from .common import stub
 
 eleven_image = (
@@ -31,24 +29,24 @@ eleven_image = (
 
 @stub.cls(
     image=eleven_image,
-    # gpu="A10G",
     container_idle_timeout=300,
     timeout=180,
 )
 class ElevenVoice:
     TONE_FOLDER = "phonesounds"
     VALID_TONES = set(list("#0123456789"))
-    def __init__(self):
-        self.tone_char_to_filestem = {**{"#": "pound"}, **{str(num): str(num) for num in range(10)}}
-        self.tone_char_to_audio_seg = {
-            tone_char: pydub.AudioSegment.from_mp3(f"{self.TONE_FOLDER}/{filestem}.mp3")
-            for tone_char, filestem in self.tone_char_to_filestem.items()
-        }
 
     def __enter__(self):
         """
         Load the model weights into GPU memory when the container starts.
         """
+        from elevenlabs import generate
+        import pydub
+        self.tone_char_to_filestem = {**{"#": "pound"}, **{str(num): str(num) for num in range(10)}}
+        self.tone_char_to_audio_seg = {
+            tone_char: pydub.AudioSegment.from_mp3(f"{self.TONE_FOLDER}/{filestem}.mp3")
+            for tone_char, filestem in self.tone_char_to_filestem.items()
+        }
 
     @method()
     def speak(self, text, voices=["geralt"]):
@@ -57,6 +55,7 @@ class ElevenVoice:
         web path can be to a target file to be used instead of a voice for
         one-shot synthesis.
         """
+        from elevenlabs import generate
         audio_blob = generate(
             text=text,
             api_key="231fb5b69ce57aa9abf2ad11fd7a96b6",
@@ -70,6 +69,7 @@ class ElevenVoice:
 
     @method()
     def dialtones(self, tones: str) -> io.BytesIO:
+        import pydub
         concat_audio = pydub.AudioSegment.empty()
         for tone in tones:
             if tone not in self.VALID_TONES:

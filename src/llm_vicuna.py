@@ -109,9 +109,18 @@ class AiPhoneModel:
         response = "Yes" if {initial_output_parser.parse(output).should_press_buttons} == True else "No"
         print(f"Response for buttons is: {response} {initial_output_parser.parse(output)}")
         if {initial_output_parser.parse(output).personal_information} == "None":
-            return f"Okay I am listening."
+            yield {
+                'response': f"Okay I am listening.",
+                'should_press_buttons': initial_output_parser.parse(output).should_press_buttons,
+                'personal_information': initial_output_parser.parse(output).personal_information
+            } 
         else:
             response = f"Let me look for my {initial_output_parser.parse(output).personal_information} and I will be right back."
+            yield {
+                'response': response,
+                'should_press_buttons': initial_output_parser.parse(output).should_press_buttons,
+                'personal_information': initial_output_parser.parse(output).personal_information
+            }
 
         
 

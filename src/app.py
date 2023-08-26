@@ -11,7 +11,7 @@ from modal import Mount, asgi_app
 from .common import stub
 from .llm_vicuna import AiPhoneModel
 from .transcriber import Whisper
-from .tts import ElevenLabs
+from .tts import ElevenVoice
 
 static_path = Path(__file__).with_name("frontend").resolve()
 
@@ -32,7 +32,7 @@ def web():
     web_app = FastAPI()
     transcriber = Whisper()
     llm = AiPhoneModel()
-    tts = ElevenLabs()
+    tts = ElevenVoice()
 
     @web_app.post("/transcribe")
     async def transcribe(request: Request):
@@ -53,13 +53,20 @@ def web():
                     tts.speak.spawn("")
             return
 
-        def speak(sentence):
+        def speak(sentence, is_dialtones=False):
             if tts_enabled:
-                fc = tts.speak.spawn(sentence)
-                return {
-                    "type": "audio",
-                    "value": fc.object_id,
-                }
+                if not is_dialtones:
+                    fc = tts.speak.spawn(sentence)
+                    return {
+                        "type": "audio",
+                        "value": fc.object_id,
+                    }
+                else:
+                    fc = tts.dialtones.spawn(sentence)
+                    return {
+                        "type": "audio",
+                        "value": fc.object_id,
+                    }
             else:
                 return {
                     "type": "sentence",
@@ -68,19 +75,28 @@ def web():
 
         def gen():
             sentence = ""
-
-            for segment in llm.generate.call(body["input"], body["history"]):
+            is_dialtone_func = False
+            for response in llm.generate.call(body["input"], body["history"]):
+                print(f"This is llm generate response: {response}")
+                segment = response['response']
+                is_dialtone = response['should_press_buttons']
+                print(f"This is segment: {segment}", flush=True)
+                print(f"This is is_dialtone: {is_dialtone}", flush=True)
                 yield {"type": "text", "value": segment}
                 sentence += segment
+                print(f"This is sentence: {sentence}")
 
                 for p in PUNCTUATION:
                     if p in sentence:
                         prev_sentence, new_sentence = sentence.rsplit(p, 1)
-                        yield speak(prev_sentence)
+                        print(f"The sentence to speak is: {prev_sentence}")
+                        yield speak(prev_sentence, is_dialtones=is_dialtone)
                         sentence = new_sentence
+                        is_dialtone_func = is_dialtone
 
             if sentence:
-                yield speak(sentence)
+                print(f"The sentence to speak is: {sentence}")
+                yield speak(sentence, is_dialtone_func)
 
         def gen_serialized():
             for i in gen():

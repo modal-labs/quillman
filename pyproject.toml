@@ -18,6 +18,8 @@ dependencies = [
     "openai>=0.27.9",
     "pymongo>=4.5.0",
     "python-dotenv>=1.0.0",
+    "elevenlabs>=0.2.24",
+    "pydub>=0.25.1",
 ]
 requires-python = ">=3.11"
 readme = "README.md"
