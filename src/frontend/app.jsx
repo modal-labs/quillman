@@ -8,7 +8,7 @@ const { useMachine } = XStateReact;
 const SILENT_DELAY = 4000; // in milliseconds
 const CANCEL_OLD_AUDIO = false; // TODO: set this to true after cancellations don't terminate containers.
 const INITIAL_MESSAGE =
-    "Please call your Charles Schwab customer service hotline and put the phone speaker next to the microphone"
+    "Please call your Chase customer service hotline and put the phone speaker next to the microphone"
 
 const INDICATOR_TYPE = {
   TALKING: "talking",
