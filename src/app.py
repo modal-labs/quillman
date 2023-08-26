@@ -19,7 +19,9 @@ PUNCTUATION = [".", "?", "!", ":", ";", "*"]
 
 
 @stub.function(
-    mounts=[Mount.from_local_dir(static_path, remote_path="/assets")],
+    mounts=[
+        Mount.from_local_dir(static_path, remote_path="/assets"),
+    ],
     container_idle_timeout=300,
     timeout=600,
 )

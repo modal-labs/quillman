@@ -8,19 +8,19 @@ copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 """
 
 import io
+from pathlib import Path
 from modal import Image, method
+import platform
+from modal import Mount
 from .common import stub
 
+phonesounds_path = Path(__file__).parent.with_name("phonesounds").resolve()
+
 eleven_image = (
-    Image.debian_slim(python_version="3.10.8")  # , requirements_path=req)
+    Image.debian_slim(python_version="3.10.8")
     .apt_install("git", "libsndfile-dev", "ffmpeg", "curl")
     .pip_install(
-        # TODO: remove all these
-        # "torch==2.0.0",
-        # "torchvision==0.15.1",
-        # "torchaudio==2.0.1",
         "pydub==0.25.1",
-        # "transformers==4.25.1",
         "elevenlabs==0.2.24",
         extra_index_url="https://download.pytorch.org/whl/cu117",
     )
@@ -31,9 +31,13 @@ eleven_image = (
     image=eleven_image,
     container_idle_timeout=300,
     timeout=180,
+    mounts=[
+        Mount.from_local_dir(phonesounds_path, remote_path="/phonesounds")
+    ]
 )
 class ElevenVoice:
-    TONE_FOLDER = "phonesounds"
+    # check if local or modal
+    TONE_FOLDER = "phonesounds" if platform.system() == "darwin" else "/phonesounds"
     VALID_TONES = set(list("#0123456789"))
 
     def __enter__(self):
