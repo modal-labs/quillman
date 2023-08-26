@@ -11,7 +11,7 @@ from modal import Mount, asgi_app
 from .common import stub
 from .llm_vicuna import AiPhoneModel
 from .transcriber import Whisper
-from .tts import Tortoise
+from .tts import ElevenLabs
 
 static_path = Path(__file__).with_name("frontend").resolve()
 
@@ -32,7 +32,7 @@ def web():
     web_app = FastAPI()
     transcriber = Whisper()
     llm = AiPhoneModel()
-    tts = Tortoise()
+    tts = ElevenLabs()
 
     @web_app.post("/transcribe")
     async def transcribe(request: Request):
