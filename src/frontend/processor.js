@@ -1,8 +1,8 @@
 const SILENCE_THRESHOLD = 0.015;
 const SAMPLE_RATE = 48000;
 const CHANNEL_DATA_LENGTH = 128;
-const MAX_SEGMENT_LENGTH = 10; // seconds
-const MIN_TALKING_TIME = 2; // seconds
+const MAX_SEGMENT_LENGTH = 20; // seconds
+const MIN_TALKING_TIME = 5; // seconds
 const AMPLITUDE_WINDOW = 0.5; // seconds
 
 class WorkletProcessor extends AudioWorkletProcessor {
@@ -11,6 +11,7 @@ class WorkletProcessor extends AudioWorkletProcessor {
     this._bufferSize = MAX_SEGMENT_LENGTH * SAMPLE_RATE;
     this._buffer = new Float32Array(this._bufferSize);
     this._writeIndex = 0;
+    this._silenceTimeout = null;
 
     this._amplitudeHistorySize = Math.floor(
       (AMPLITUDE_WINDOW * SAMPLE_RATE) / CHANNEL_DATA_LENGTH
@@ -73,14 +74,21 @@ class WorkletProcessor extends AudioWorkletProcessor {
       if (this._lastEventState !== "talking") {
         this._lastEventState = "talking";
         this.port.postMessage({ type: "talking" });
+        // If user starts talking, clear the silence timeout
+        if (this._silenceTimeout) {
+          clearTimeout(this._silenceTimeout);
+          this._silenceTimeout = null;
+        }
       }
     } else {
       if (this._lastEventState !== "silence") {
         this._talkingTime += (new Date() - this._lastEventTime) / 1000;
         this._lastEventState = "silence";
         this._lastEventTime = new Date();
-        this.port.postMessage({ type: "silence" });
-      }
+        // Set a new timeout
+        this._silenceTimeout = setTimeout(() => {
+          this.port.postMessage({ type: "silence" });
+        }, 3000);
     }
 
     // If we have a silence or are running out of buffer space, send everything

@@ -8,7 +8,7 @@ const { useMachine } = XStateReact;
 const SILENT_DELAY = 4000; // in milliseconds
 const CANCEL_OLD_AUDIO = false; // TODO: set this to true after cancellations don't terminate containers.
 const INITIAL_MESSAGE =
-  "Hi! I'm a language model running on Modal. Talk to me using your microphone, and remember to turn your speaker volume up!";
+  "Hi I am AI Phone Calling Assistant. I can make calls on your behalf";
 
 const INDICATOR_TYPE = {
   TALKING: "talking",
