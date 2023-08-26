@@ -55,8 +55,8 @@ class AiPhoneModel:
     @method()
     async def generate(self, input, history=[]):
         t0 = time.time()
-        print(f"The VICUNA generate input is: {input}")
-        print(f"The VICUNA generate history is: {history}")
+        print(f"The user input is: {input}")
+        print(f"The utterance history is: {history}")
         if input == "":
             return
         model_name = 'gpt-4-0613'
