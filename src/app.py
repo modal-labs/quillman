@@ -45,7 +45,8 @@ def web():
     @web_app.post("/generate")
     async def generate(request: Request):
         body = await request.json()
-        tts_enabled = body["tts"]
+        # always use ben voice
+        tts_enabled = True
 
         if "noop" in body:
             llm.generate.spawn("")

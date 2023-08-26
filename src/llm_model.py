@@ -107,7 +107,8 @@ class AiPhoneModel:
         _input = prompt.format_prompt(query=input)
         model = get_openai_conversation_model()
         output = model(_input.to_string())
-        print(f"THIS IS OUTPUT of llm preparse {output}")
+        print(f"the llm_model input: {input}")
+        print(f"the llm_model output: {output}")
         initial_output_parser.parse(output)
 
         print(f"Output generated in {time.time() - t0:.2f}s")

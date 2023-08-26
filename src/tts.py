@@ -9,8 +9,9 @@ copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 
 import io
 from pathlib import Path
-from modal import Image, method
 import platform
+
+from modal import Image, method
 from modal import Mount
 from .common import stub
 
