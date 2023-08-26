@@ -1,0 +1,6 @@
+jupyter
+pymongo
+langchain
+python-dotenv
+cohere
+tiktoken
