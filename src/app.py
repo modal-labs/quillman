@@ -57,6 +57,8 @@ def web():
             return
 
         def speak(sentence, is_dialtones=False):
+            if not sentence:
+                return
             if tts_enabled:
                 print(f"This is sentence: {sentence} and is_dialtones: {is_dialtones}")
                 if not is_dialtones:
@@ -82,6 +84,8 @@ def web():
             sentence = ""
             is_dialtone = False
             for response in llm.generate.call(body["input"], body["history"]):
+                if response is None:
+                    continue
                 print(f"This is llm generate response: {response}")
                 segment = response['response']
                 is_dialtone = response['should_press_buttons']

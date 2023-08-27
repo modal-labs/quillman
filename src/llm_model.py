@@ -64,6 +64,11 @@ class AiPhoneModel:
         print(f"The user input is: {input}")
         print(f"The utterance history is: {history}")
         if input == "":
+            yield {
+                "response": "",
+                "should_press_buttons": False,
+                "personal_information": None
+            }
             return
 
         class InitialOutput(BaseModel):
@@ -76,13 +81,15 @@ class AiPhoneModel:
         initial_output_parser = PydanticOutputParser(pydantic_object=InitialOutput)
 
         template_str = """
-        You are a powerful assistant who helps answer questions on my behalf. Your job is to understand what personal information are being requested and whether the response should be pressed in buttons.
-        Help me understand the {query}. 
+        You are a powerful assistant who is speaking with a customer service representative. The customer service representative might ask you for personal information.
+        The customer service representative might ask you to press buttons to take an action.
 
-        Could you tell me the personal information being requested? It is possible that there is no personal information being requested, then respond with None. If there are multiple personal information being requested, select the first one.
-        If the query requires me to press buttons to respond, return True for should_press_buttons. Otherwise, return False. It is possible that there is no personal information being requested, then respond with None.
-        Could you also figure out if the response should be pressed it or not? It is possible that there is no personal information being requested. Then respond with False.
+        If no personal information is being requested, then respond "Personal Information: None"
+        Otherwise, respond with "Personal Information: <personal information being requested>"
 
+        If the query requires me to press or dial numbers, return "Should the response be pressed in buttons: True"
+        Otherwise, return "Should the response be pressed in buttons: False"
+        
         Some examples:
         Query: This call will be monitored and recorded. And your voice? Welcome to Chase, my name is Benioin. This call will be monitored and recorded, and your voice may be huge for parenting cases. Please enter your debit card, account number, or user ID. Followed by the pound key. To report your debit card lost, stolen or damaged. Or to report unrecognized charges. Press A. For other options, press 2.
         Personal Information: Debit card number
@@ -96,9 +103,13 @@ class AiPhoneModel:
         Personal Information: None
         Should the response be pressed in buttons: false
 
-        
+        Query: To deactivate your Chase account, please dial 2. Welcome back Joe Biden.
+        Personal Information: None
+        Should the response be pressed in buttons: false
 
         {format_instructions}
+
+        Help me understand ```{query}```
         """
 
         prompt = PromptTemplate(
@@ -119,13 +130,64 @@ class AiPhoneModel:
         response = "Yes" if {initial_output_parser.parse(output).should_press_buttons} == True else "No"
         print(f"Response for buttons is: {response} {initial_output_parser.parse(output)}")
         if initial_output_parser.parse(output).personal_information in ("None", "none", "NONE", "no", "No", "NO", None):
-            yield {
-                "response": f"Okay I am listening.",
-                "should_press_buttons": False,
-                "personal_information": initial_output_parser.parse(
-                    output
-                ).personal_information,
-            }
+            
+            class ActionOutput(BaseModel):
+                key_to_press: str = Field(
+                    description="What key is to be pressed for an action?"
+                )
+
+            # Set up a parser + inject instructions into the prompt template.
+            action_output_parser = PydanticOutputParser(pydantic_object=ActionOutput)
+
+            action_template_str = """
+            You are a powerful assistant who helps answer questions on my behalf. Your job is to understand what buttons can be pressed to take an action with the customer call query.
+            Help me understand the {query} and find the number to press.
+
+            Only return the number to press. If there are multiple numbers to press, select the first one.
+            If there is no number to press, return "None".
+
+            Some examples:
+            Query: Press 2 to cancel your credit card
+            key_to_press: 2
+
+            Query: Key in 4 to cancel your hear account balance
+            key_to_press: 4
+
+            Query: Dial in 0 to cancel your hear account balance
+            key_to_press: 0
+
+            {format_instructions}
+            """
+
+            action_prompt = PromptTemplate(
+                template=action_template_str,
+                input_variables=["query"],
+                partial_variables={
+                    "format_instructions": action_output_parser.get_format_instructions()
+                },
+            )
+            action_input = action_prompt.format_prompt(query=input)
+            action_output = model(action_input.to_string())
+            print(f"the llm_model action input: {input}")
+            print(f"the llm_model action output: {action_output}")
+            action = action_output_parser.parse(action_output) 
+            
+            if  action.key_to_press in ("None", "none", "NONE", "no", "No", "NO", None):
+
+                yield {
+                    "response": "Okay I am listening.",
+                    "should_press_buttons": False,
+                    "personal_information": initial_output_parser.parse(
+                        output
+                    ).personal_information,
+                }
+            else:
+                yield {
+                    "response": action.key_to_press,
+                    "should_press_buttons": True,
+                    "personal_information": None
+                }
+
         else:
             response = f"Let me look for my {initial_output_parser.parse(output).personal_information} and I will be right back."
             yield {

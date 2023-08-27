@@ -118,10 +118,7 @@ function Sidebar({
   return (
     <nav className="bg-zinc-900 w-[400px] flex flex-col h-full gap-2 p-2 text-gray-100 ">
       <h1 className="text-4xl font-semibold text-center text-zinc-200 ml-auto mr-auto flex gap-2 items-center justify-center h-20">
-        QuiLLMan
-        <span className="bg-yellow-300 text-yellow-900 py-0.5 px-1.5 text-xs rounded-md uppercase">
-          Plus
-        </span>
+        Executive (A)ss(I)stant
       </h1>
       <div className="flex flex-row justify-evenly mb-4">
         <button
@@ -162,13 +159,6 @@ function Sidebar({
           {label}
         </button>
       ))}
-      <button
-        className="py-2 items-center justify-center rounded-md cursor-pointer border border-white/20 pointer-events-none"
-        onClick={() => onModelSelect(id)}
-        disabled
-      >
-        More coming soon!
-      </button>
       <a
         className="items-center flex justify-center mt-auto"
         href="https://modal.com"

@@ -88,7 +88,7 @@ class WorkletProcessor extends AudioWorkletProcessor {
         // Set a new timeout
         this._silenceTimeout = setTimeout(() => {
           this.port.postMessage({ type: "silence" });
-        }, 3000);
+        }, 1000);
     }
 
     // If we have a silence or are running out of buffer space, send everything
