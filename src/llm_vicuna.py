@@ -29,13 +29,7 @@ def download_model():
 
 
 stub.vicuna_image = (
-    Image.from_registry(
-        "nvidia/cuda:12.2.0-devel-ubuntu20.04",
-        setup_dockerfile_commands=[
-            "RUN apt-get update",
-            "RUN apt-get install -y python3 python3-pip python-is-python3",
-        ],
-    )
+    Image.from_registry("nvidia/cuda:12.2.0-devel-ubuntu20.04", add_python="3.8")
     .apt_install("git", "gcc", "build-essential")
     .run_commands(
         "git clone https://github.com/thisserand/FastChat.git",
