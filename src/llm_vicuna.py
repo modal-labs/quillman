@@ -52,7 +52,7 @@ stub.vicuna_image = (
 
 ""
 
-if stub.is_inside(stub.vicuna_image):
+with stub.vicuna_image.imports():
     t0 = time.time()
     import os
     import warnings
@@ -61,9 +61,10 @@ if stub.is_inside(stub.vicuna_image):
         "ignore", category=UserWarning, message="TypedStorage is deprecated"
     )
 
-    # This version of FastChat hard-codes a relative path for the model ("./model"),
-    # making this necessary :(
-    os.chdir("/FastChat")
+    if os.path.exists("/FastChat"):
+        # This version of FastChat hard-codes a relative path for the model ("./model"),
+        # making this necessary :(
+        os.chdir("/FastChat")
     from fastchat.conversation import SeparatorStyle, conv_templates
     from fastchat.serve.cli import generate_stream
     from fastchat.serve.load_gptq_model import load_quantized
@@ -122,5 +123,5 @@ class Vicuna:
 @stub.local_entrypoint()
 def main(input: str):
     model = Vicuna()
-    for val in model.generate.call(input):
+    for val in model.generate.remote(input):
         print(val, end="", flush=True)

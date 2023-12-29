@@ -37,7 +37,7 @@ def web():
     @web_app.post("/transcribe")
     async def transcribe(request: Request):
         bytes = await request.body()
-        result = transcriber.transcribe_segment.call(bytes)
+        result = transcriber.transcribe_segment.remote(bytes)
         return result["text"]
 
     @web_app.post("/generate")
@@ -69,7 +69,7 @@ def web():
         def gen():
             sentence = ""
 
-            for segment in llm.generate.call(body["input"], body["history"]):
+            for segment in llm.generate.remote_gen(body["input"], body["history"]):
                 yield {"type": "text", "value": segment}
                 sentence += segment
 
