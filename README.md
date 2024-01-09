@@ -26,7 +26,7 @@ Read the accompanying [docs](https://modal.com/docs/examples/llm-voice-chat) for
 
 ### Requirements
 
-- `modal-client` installed in your current Python virtual environment (`pip install modal-client`)
+- `modal` installed in your current Python virtual environment (`pip install modal`)
 - A [Modal](http://modal.com/) account
 - A Modal token set up in your environment (`modal token new`)
 
