@@ -41,6 +41,11 @@ stub.vicuna_image = (
         "git clone https://github.com/thisserand/FastChat.git",
         "cd FastChat && pip install -e .",
     )
+    .pip_install(
+        "torch==2.0.1",
+        "torchvision==0.15.2",
+        "torchaudio==2.0.2",
+    )
     .run_commands(
         # FastChat hard-codes a path for GPTQ, so this needs to be cloned inside repositories.
         "git clone https://github.com/oobabooga/GPTQ-for-LLaMa.git -b cuda /FastChat/repositories/GPTQ-for-LLaMa",
@@ -123,5 +128,5 @@ class Vicuna:
 @stub.local_entrypoint()
 def main(input: str):
     model = Vicuna()
-    for val in model.generate.remote(input):
+    for val in model.generate.remote_gen(input):
         print(val, end="", flush=True)
