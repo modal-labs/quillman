@@ -18,7 +18,8 @@ const INDICATOR_TYPE = {
 };
 
 const MODELS = [
-  { id: "vicuna-13b-4bit", label: "Vicuna 13B (4-bit)" },
+  { id: "zephyr-7b-beta-4bit", label: "Zephyr 7B beta (4-bit)" },
+  // { id: "vicuna-13b-4bit", label: "Vicuna 13B (4-bit)" },
   // { id: "alpaca-lora-7b", label: "Alpaca LORA 7B" },
 ];
 

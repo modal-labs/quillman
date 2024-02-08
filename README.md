@@ -6,7 +6,7 @@ This repo is meant to serve as a starting point for your own language model-base
 
 ![quillman](https://user-images.githubusercontent.com/5786378/233804923-c13627de-97db-4050-a36b-62d955db9c19.gif)
 
-The language model used is [Vicuna](https://github.com/lm-sys/FastChat), and we're planning on adding support for more models soon (requests and contributions welcome). [OpenAI Whisper](https://github.com/openai/whisper) is used for transcription, and [Metavoice Tortoise TTS](https://github.com/metavoicexyz/tortoise-tts) is used for text-to-speech. The entire app, including the frontend, is made to be deployed serverlessly on [Modal](http://modal.com/).
+The language model used is [Zephyr](https://arxiv.org/abs/2310.16944). [OpenAI Whisper](https://github.com/openai/whisper) is used for transcription, and [Metavoice Tortoise TTS](https://github.com/metavoicexyz/tortoise-tts) is used for text-to-speech. The entire app, including the frontend, is made to be deployed serverlessly on [Modal](http://modal.com/).
 
 You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 
@@ -18,7 +18,7 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 2. FastAPI server ([`src/app.py`](./src/app.py))
 3. Whisper transcription module ([`src/transcriber.py`](./src/transcriber.py))
 4. Tortoise text-to-speech module ([`src/tts.py`](./src/tts.py))
-5. Vicuna language model module ([`src/llm_vicuna.py`](./src/llm_vicuna.py))
+5. Zephyr language model module ([`src/llm_zephyr.py`](./src/llm_zephyr.py))
 
 Read the accompanying [docs](https://modal.com/docs/examples/llm-voice-chat) for a detailed look at each of these components.
 
