@@ -15,7 +15,7 @@ MODEL_NAME = "TheBloke/zephyr-7B-beta-AWQ"
 
 
 zephyr_image = (
-    Image.from_registry("nvidia/cuda:12.1.1-base-ubuntu22.04", add_python="3.11")
+    Image.debian_slim(python_version="3.11")
     .pip_install(
         "autoawq==0.1.8",
         "torch==2.1.2",
@@ -83,7 +83,6 @@ class Zephyr:
         thread.start()
         for new_text in self.streamer:
             yield new_text
-
         thread.join()
 
         print(f"Output generated in {time.time() - t0:.2f}s")
