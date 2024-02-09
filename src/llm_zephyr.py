@@ -14,7 +14,7 @@ from .common import stub
 MODEL_NAME = "TheBloke/zephyr-7B-beta-AWQ"
 
 
-stub.zephyr_image = (
+zephyr_image = (
     Image.from_registry("nvidia/cuda:12.1.1-base-ubuntu22.04", add_python="3.11")
     .pip_install(
         "autoawq==0.1.8",
@@ -23,13 +23,13 @@ stub.zephyr_image = (
 )
 
 
-with stub.zephyr_image.imports():
+with zephyr_image.imports():
     from threading import Thread
     from transformers import AutoTokenizer, TextIteratorStreamer
     from awq import AutoAWQForCausalLM
 
 
-@stub.cls(image=stub.zephyr_image, gpu="T4", container_idle_timeout=300)
+@stub.cls(image=zephyr_image, gpu="T4", container_idle_timeout=300)
 class Zephyr:
     @build()
     def download_model(self):
@@ -43,16 +43,12 @@ class Zephyr:
         t0 = time.time()
         print("Loading AWQ quantized model...")
 
-        model = AutoAWQForCausalLM.from_quantized(MODEL_NAME, fuse_layers=False, version="GEMV")
+        self.model = AutoAWQForCausalLM.from_quantized(MODEL_NAME, fuse_layers=False, version="GEMV")
 
         print(f"Model loaded in {time.time() - t0:.2f}s")
 
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-
-        self.model = model
-        self.tokenizer = tokenizer
-        self.streamer = streamer
+        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        self.streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
 
 
     @method()
