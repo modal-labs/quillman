@@ -76,8 +76,10 @@ class Zephyr:
             inputs=tokenized_chat,
             streamer=self.streamer,
             do_sample=True,
-            temperature=0.7,
-            max_new_tokens=512,
+            temperature=0.9,
+            top_p=0.95,
+            repetition_penalty=1.2,
+            max_new_tokens=1024,
         )
 
         # Run generation on separate thread to enable response streaming.
