@@ -5,9 +5,8 @@ Speech-to-text transcriptiong service based on OpenAI Whisper.
 import tempfile
 import time
 
-from modal import Image, method
-
-from .common import stub
+import modal
+from .common import app
 
 MODEL_NAME = "base.en"
 
@@ -19,7 +18,7 @@ def download_model():
 
 
 transcriber_image = (
-    Image.debian_slim(python_version="3.10.8")
+    modal.Image.debian_slim(python_version="3.10.8")
     .apt_install("git", "ffmpeg")
     .pip_install(
         "https://github.com/openai/whisper/archive/v20230314.tar.gz",
@@ -61,13 +60,17 @@ def load_audio(data: bytes, sr: int = 16000):
     return np.frombuffer(out, np.float32).flatten()
 
 
-@stub.cls(
+@app.cls(
     gpu="A10G",
     container_idle_timeout=180,
     image=transcriber_image,
 )
 class Whisper:
-    def __enter__(self):
+    def __init__(self):
+        pass
+
+    @modal.enter()
+    def load_model(self):
         import torch
         import whisper
 
@@ -75,7 +78,7 @@ class Whisper:
         device = "cuda" if self.use_gpu else "cpu"
         self.model = whisper.load_model(MODEL_NAME, device=device)
 
-    @method()
+    @modal.method()
     def transcribe_segment(
         self,
         audio_data: bytes,

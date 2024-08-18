@@ -7,15 +7,15 @@ please check the license before using for commercial purposes!
 import time
 from pathlib import Path
 
-from modal import Image, build, enter, method
+import modal
 
-from .common import stub
+from .common import app
 
 MODEL_NAME = "TheBloke/zephyr-7B-beta-AWQ"
 
 
 zephyr_image = (
-    Image.debian_slim(python_version="3.11")
+    modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "autoawq==0.1.8",
         "torch==2.1.2",
@@ -29,16 +29,16 @@ with zephyr_image.imports():
     from awq import AutoAWQForCausalLM
 
 
-@stub.cls(image=zephyr_image, gpu="T4", container_idle_timeout=300)
+@app.cls(image=zephyr_image, gpu="T4", container_idle_timeout=300)
 class Zephyr:
-    @build()
+    @modal.build()
     def download_model(self):
         from huggingface_hub import snapshot_download
 
         snapshot_download(MODEL_NAME)
 
 
-    @enter()
+    @modal.enter()
     def load_model(self):
         t0 = time.time()
         print("Loading AWQ quantized model...")
@@ -51,7 +51,7 @@ class Zephyr:
         self.streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
 
 
-    @method()
+    @modal.method()
     async def generate(self, input, history=[]):
         if input == "":
             return
@@ -89,7 +89,7 @@ class Zephyr:
 
 
 # For local testing, run `modal run -q src.llm_zephyr --input "Where is the best sushi in New York?"`
-@stub.local_entrypoint()
+@app.local_entrypoint()
 def main(input: str):
     model = Zephyr()
     for val in model.generate.remote_gen(input):

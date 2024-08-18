@@ -8,7 +8,7 @@ from pathlib import Path
 
 from modal import Mount, asgi_app
 
-from .common import stub
+from .common import app
 from .llm_zephyr import Zephyr
 from .transcriber import Whisper
 from .tts import Tortoise
@@ -18,7 +18,7 @@ static_path = Path(__file__).with_name("frontend").resolve()
 PUNCTUATION = [".", "?", "!", ":", ";", "*"]
 
 
-@stub.function(
+@app.function(
     mounts=[Mount.from_local_dir(static_path, remote_path="/assets")],
     container_idle_timeout=300,
     timeout=600,

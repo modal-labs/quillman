@@ -1,112 +1,106 @@
 """
-Text-to-speech service based on the tortoise-tts library.
+Text-to-speech service based on the Coqui TTS library.
 
-The following code is based on code from the https://github.com/metavoicexyz/tortoise-tts-modal-api
-repository, which is licensed under the Apache License, Version 2.0 (the "License");
+The following code is based on the [Tortoise model](https://docs.coqui.ai/en/latest/models/tortoise.html#) from the [Coqui TTS](https://github.com/coqui-ai/TTS)
+repository, which is licensed under the Mozilla Public License 2.0 (the "License");
 you may not use this file except in compliance with the License. You may obtain a
-copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+copy of the License at https://github.com/coqui-ai/TTS/blob/dev/LICENSE.txt.
 """
 
+# https://docs.coqui.ai/en/latest/models/tortoise.html
+
 import io
-import tempfile
 
-from modal import Image, method
+import modal
 
-from .common import stub
-
-
-def download_models():
-    from tortoise.api import MODELS_DIR, TextToSpeech
-
-    tts = TextToSpeech(models_dir=MODELS_DIR)
-    tts.get_random_conditioning_latents()
-
+# from .common import app
+app = modal.App(name="tortoise-tts")
 
 tortoise_image = (
-    Image.debian_slim(python_version="3.10.8")  # , requirements_path=req)
-    .apt_install("git", "libsndfile-dev", "ffmpeg", "curl")
-    .pip_install(
-        "torch==2.0.0",
-        "torchvision==0.15.1",
-        "torchaudio==2.0.1",
-        "pydub==0.25.1",
-        "transformers==4.25.1",
-        extra_index_url="https://download.pytorch.org/whl/cu117",
-    )
-    .pip_install("git+https://github.com/metavoicexyz/tortoise-tts")
-    .run_function(download_models)
+    modal.Image.debian_slim(python_version="3.11.9")
+    .apt_install("git")
+    .workdir("/app")
+    .run_commands("git clone https://github.com/2noise/ChatTTS.git")
+    .pip_install("torch", "torchaudio")
 )
 
+with tortoise_image.imports():
+    import torch
+    import torchaudio
+    import ChatTTS
+    torch._dynamo.config.cache_size_limit = 64
+    torch._dynamo.config.suppress_errors = True
+    torch.set_float32_matmul_precision('high')
 
-@stub.cls(
+@app.cls(
     image=tortoise_image,
     gpu="A10G",
     container_idle_timeout=300,
     timeout=180,
 )
 class Tortoise:
-    def __enter__(self):
-        """
-        Load the model weights into GPU memory when the container starts.
-        """
-        from tortoise.api import MODELS_DIR, TextToSpeech
-        from tortoise.utils.audio import load_audio, load_voices
+    def __init__(self, model_id = "tts_models/en/multi-dataset/tortoise-v2"):
+        self.model_id = model_id
 
-        self.load_voices = load_voices
-        self.load_audio = load_audio
-        self.tts = TextToSpeech(models_dir=MODELS_DIR)
-        self.tts.get_random_conditioning_latents()
+    # We can stack the build and enter methods since TTS loads the model and caches it in memory, 
+    # so it will work in both build and on container boot
+    @modal.build() 
+    @modal.enter()
+    def load_model(self):
+        # """
+        # Load the model weights into GPU memory when the container starts.
+        # """
+        # from TTS.api import TTS
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+        import os
+        print(os.listdir("./"))
 
-    def process_synthesis_result(self, result):
+        import ChatTTS
+
+
+        self.chat = ChatTTS.Chat().to(device)
+        self.chat.load_models(compile=False) # Set to True for better performance
+
+
+    @modal.method()
+    def speak(self, text):
         """
-        Converts a audio torch tensor to a binary blob.
+        Runs tortoise tts on a given text.
         """
-        import pydub
-        import torchaudio
-
-        with tempfile.NamedTemporaryFile() as converted_wav_tmp:
-            torchaudio.save(
-                converted_wav_tmp.name + ".wav",
-                result,
-                24000,
-            )
-            wav = io.BytesIO()
-            _ = pydub.AudioSegment.from_file(
-                converted_wav_tmp.name + ".wav", format="wav"
-            ).export(wav, format="wav")
-
-        return wav
-
-    @method()
-    def speak(self, text, voices=["geralt"]):
-        """
-        Runs tortoise tts on a given text and voice. Alternatively, a
-        web path can be to a target file to be used instead of a voice for
-        one-shot synthesis.
-        """
-
+        
         text = text.strip()
         if not text:
             return
+        
+        # config = {
+        #     # "num_autoregressive_samples": 32,  # Increased from default 16
+        #     # "diffusion_iterations": 50,        # Increased from default 30
+        #     # "temperature": 0.5,                 # Slightly increased from default 0.2
+        #     # "length_penalty": 1.0,              # Default value
+        #     # "repetition_penalty": 2.5,          # Slightly increased to reduce repetitions
+        #     # "top_p": 0.8,                       # Default value
+        #     # "cond_free_k": 2.0,                 # Default value
+        #     # "diffusion_temperature": 1.0,       # Default value
+        # }
 
-        CANDIDATES = 1  # NOTE: this code only works for one candidate.
-        CVVP_AMOUNT = 0.0
-        SEED = None
-        PRESET = "fast"
+        wavs = self.chat.infer([text])
+        wav_file = io.BytesIO()
+        torchaudio.save(wav_file, torch.from_numpy(wavs[0]), 24000)
+        return wav_file.getvalue()
+        
+        # # do inference and save into an in-memory wav file
+        # wav = io.BytesIO()
+        # self.tts.tts_to_file(text, file_path=wav, **config)
 
-        voice_samples, conditioning_latents = self.load_voices(voices)
+        # # return wav as a bytes object
+        # return wav.getvalue()
 
-        gen, _ = self.tts.tts_with_preset(
-            text,
-            k=CANDIDATES,
-            voice_samples=voice_samples,
-            conditioning_latents=conditioning_latents,
-            preset=PRESET,
-            use_deterministic_seed=SEED,
-            return_deterministic_state=True,
-            cvvp_amount=CVVP_AMOUNT,
-        )
 
-        wav = self.process_synthesis_result(gen.squeeze(0).cpu())
+@app.local_entrypoint()
+def main(text: str):
+    tts = Tortoise()
+    wav = tts.speak.remote(text)
 
-        return wav
+    with open("output.wav", "wb") as f:
+        f.write(wav)
