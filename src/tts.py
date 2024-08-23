@@ -1,46 +1,48 @@
 """
-Text-to-speech service based on the Coqui TTS library.
+Text-to-speech service based on the ChatTTS library.
 
-The following code is based on the [Tortoise model](https://docs.coqui.ai/en/latest/models/tortoise.html#) from the [Coqui TTS](https://github.com/coqui-ai/TTS)
-repository, which is licensed under the Mozilla Public License 2.0 (the "License");
-you may not use this file except in compliance with the License. You may obtain a
-copy of the License at https://github.com/coqui-ai/TTS/blob/dev/LICENSE.txt.
+The following code is based on the [ChatTTS model](https://github.com/2noise/ChatTTS) repository, 
+which is licensed under the GNU AFFERO GENERAL PUBLIC LICENSE (the "License");
+The License requires that any derivative work must be fully open source and under the same license.
+You may obtain a copy of the License at https://github.com/2noise/ChatTTS/blob/main/LICENSE.
 """
 
-# https://docs.coqui.ai/en/latest/models/tortoise.html
-
 import io
-
 import modal
+from .common import app
 
-# from .common import app
-app = modal.App(name="tortoise-tts")
-
-tortoise_image = (
-    modal.Image.debian_slim(python_version="3.11.9")
+tts_image = (
+    modal.Image.debian_slim()
     .apt_install("git")
     .workdir("/app")
-    .run_commands("git clone https://github.com/2noise/ChatTTS.git")
-    .pip_install("torch", "torchaudio")
+    .pip_install("git+https://github.com/2noise/ChatTTS.git@51ec0c784c2795b257d7a6b64274e7a36186b731")
+    .pip_install("soundfile")
 )
 
-with tortoise_image.imports():
+with tts_image.imports():
     import torch
     import torchaudio
     import ChatTTS
-    torch._dynamo.config.cache_size_limit = 64
-    torch._dynamo.config.suppress_errors = True
-    torch.set_float32_matmul_precision('high')
 
 @app.cls(
-    image=tortoise_image,
+    image=tts_image,
     gpu="A10G",
     container_idle_timeout=300,
     timeout=180,
 )
-class Tortoise:
-    def __init__(self, model_id = "tts_models/en/multi-dataset/tortoise-v2"):
-        self.model_id = model_id
+class TTS:
+    def __init__(self, voice = "male"):
+
+        # "voice" translates to a torch seed, which affects the timbre of the voice
+        # we generated all voices seed 0-100, and these were the highest quality
+        voice_seeds = {
+            "female": 28,
+            "male": 34,
+            "male_alt_1": 43,
+        }
+
+        print(f"Using voice {voice} with seed {voice_seeds[voice]}")
+        self.voice_seed = voice_seeds[voice]
 
     # We can stack the build and enter methods since TTS loads the model and caches it in memory, 
     # so it will work in both build and on container boot
@@ -50,21 +52,17 @@ class Tortoise:
         # """
         # Load the model weights into GPU memory when the container starts.
         # """
-        # from TTS.api import TTS
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        # self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
-        import os
-        print(os.listdir("./"))
-
         import ChatTTS
+        
+        self.chat = ChatTTS.Chat()
+        self.chat.load(compile=False) # Set to True for better performance
 
-
-        self.chat = ChatTTS.Chat().to(device)
-        self.chat.load_models(compile=False) # Set to True for better performance
-
+        # uses torch seed for deterministic speaker
+        torch.manual_seed(self.voice_seed)
+        self.rand_spk = self.chat.sample_random_speaker()
 
     @modal.method()
-    def speak(self, text):
+    def speak(self, text, temperature=0.18, top_p=0.9, top_k=20):
         """
         Runs tortoise tts on a given text.
         """
@@ -72,35 +70,32 @@ class Tortoise:
         text = text.strip()
         if not text:
             return
-        
-        # config = {
-        #     # "num_autoregressive_samples": 32,  # Increased from default 16
-        #     # "diffusion_iterations": 50,        # Increased from default 30
-        #     # "temperature": 0.5,                 # Slightly increased from default 0.2
-        #     # "length_penalty": 1.0,              # Default value
-        #     # "repetition_penalty": 2.5,          # Slightly increased to reduce repetitions
-        #     # "top_p": 0.8,                       # Default value
-        #     # "cond_free_k": 2.0,                 # Default value
-        #     # "diffusion_temperature": 1.0,       # Default value
-        # }
 
-        wavs = self.chat.infer([text])
+        params_infer_code = ChatTTS.Chat.InferCodeParams(
+            spk_emb = self.rand_spk,
+            temperature = temperature,
+            top_P = top_p,
+            top_K = top_k,
+        )
+
+
+        params_refine_text = ChatTTS.Chat.RefineTextParams(
+            prompt='[oral_8][laugh_2][break_2]', # expressive and fun voice
+        )
+
+        wavs = self.chat.infer(text, skip_refine_text=True, params_infer_code=params_infer_code, params_refine_text=params_refine_text)
+        
+        # Save into an in-memory wav file
         wav_file = io.BytesIO()
-        torchaudio.save(wav_file, torch.from_numpy(wavs[0]), 24000)
-        return wav_file.getvalue()
-        
-        # # do inference and save into an in-memory wav file
-        # wav = io.BytesIO()
-        # self.tts.tts_to_file(text, file_path=wav, **config)
+        torchaudio.save(wav_file, torch.from_numpy(wavs[0]).unsqueeze(0), 24000, format="wav", backend="soundfile")
 
-        # # return wav as a bytes object
-        # return wav.getvalue()
+        # # return wav as a file object
+        return wav_file
 
 
 @app.local_entrypoint()
-def main(text: str):
-    tts = Tortoise()
+def tts_entrypoint(text: str):
+    tts = TTS()
     wav = tts.speak.remote(text)
-
-    with open("output.wav", "wb") as f:
-        f.write(wav)
+    with open(f"output.wav", "wb") as f:
+        f.write(wav.getvalue())

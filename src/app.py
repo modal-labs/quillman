@@ -10,12 +10,13 @@ from modal import Mount, asgi_app
 
 from .common import app
 from .llm_zephyr import Zephyr
-from .transcriber import Whisper
+from .whisper import Whisper
 from .tts import Tortoise
 
 static_path = Path(__file__).with_name("frontend").resolve()
 
 PUNCTUATION = [".", "?", "!", ":", ";", "*"]
+
 
 
 @app.function(
@@ -96,6 +97,7 @@ def web():
         from modal.functions import FunctionCall
 
         function_call = FunctionCall.from_id(call_id)
+        print("Getting audio for", call_id)
         try:
             result = function_call.get(timeout=30)
         except TimeoutError:

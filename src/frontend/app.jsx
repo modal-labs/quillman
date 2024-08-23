@@ -369,6 +369,7 @@ class PlayQueue {
     let response;
     let success = false;
     while (true) {
+      console.log("Fetching audio for call", call_id);
       response = await fetch(`/audio/${call_id}`);
       if (response.status === 202) {
         continue;

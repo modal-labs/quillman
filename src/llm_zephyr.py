@@ -9,7 +9,8 @@ from pathlib import Path
 
 import modal
 
-from .common import app
+# from .common import app
+from .common_proto import app
 
 MODEL_NAME = "TheBloke/zephyr-7B-beta-AWQ"
 
@@ -29,8 +30,15 @@ with zephyr_image.imports():
     from awq import AutoAWQForCausalLM
 
 
-@app.cls(image=zephyr_image, gpu="T4", container_idle_timeout=300)
+@app.cls(
+    image=zephyr_image, 
+    gpu="A10G", 
+    container_idle_timeout=300
+)
 class Zephyr:
+    def __init__(self):
+        print("Initializing zephyr model")
+
     @modal.build()
     def download_model(self):
         from huggingface_hub import snapshot_download
@@ -50,8 +58,12 @@ class Zephyr:
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
         self.streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
 
-
     @modal.method()
+    def prewarm(self):
+        # no-op to prewarm LLM model instance
+        pass
+
+    @modal.method(is_generator=True)
     async def generate(self, input, history=[]):
         if input == "":
             return
@@ -90,7 +102,7 @@ class Zephyr:
 
 # For local testing, run `modal run -q src.llm_zephyr --input "Where is the best sushi in New York?"`
 @app.local_entrypoint()
-def main(input: str):
+def zephyr_entrypoint(input: str):
     model = Zephyr()
     for val in model.generate.remote_gen(input):
         print(val, end="", flush=True)
