@@ -94,9 +94,13 @@ class Zephyr:
         thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
         thread.start()
         for new_text in self.streamer:
+            print(f"New text: |{new_text}|")
+            # ignore empty words which are sometimes generated
+            if new_text.strip() == "":
+                continue
+            print("Yielding")
             yield new_text
         thread.join()
-
         print(f"Output generated in {time.time() - t0:.2f}s")
 
 

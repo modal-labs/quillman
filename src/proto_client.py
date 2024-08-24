@@ -17,18 +17,26 @@ files.sort()
 # we're simulating a user speaking into a microphone
 user_finish_time = None
 def user_input_generator():
+    first = True
     for wav in files:
         wav = "test-audio" / Path(wav)
+        print(wav)
 
-        # sleep the duration of the wav to simulate the user finishing
-        with wave.open(wav.as_posix(), 'rb') as wav_file:
-            n_frames = wav_file.getnframes()
-            frame_rate = wav_file.getframerate()
-            time.sleep(n_frames / frame_rate)
+        # if not first:
+        #     # print("sleeping")
+        #     # # sleep the duration of the wav to simulate the user finishing
+        #     # with wave.open(wav.as_posix(), 'rb') as wav_file:
+        #     #     n_frames = wav_file.getnframes()
+        #     #     frame_rate = wav_file.getframerate()
+        #     #     print("sleeping", n_frames / frame_rate)
+        #     #     time.sleep(n_frames / frame_rate)
+        # else:
+        #     print("sending first wav")
+        #     # immedietly send the first wav to make faster
+        #     first = False
 
         with open(wav, "rb") as f:
             yield f.read()
-            print("Sent WAV chunk")
 
     # used for understanding time of pipeline
     print("User finished speaking, waiting...")
@@ -54,8 +62,9 @@ async def main():
             print("WebSocket connection established")
             
             for wav in user_input_generator():
+                s = time.time()
                 await websocket.send(wav)
-                print(f"Sent WAV chunk")
+                print(f"Sent WAV chunk in {time.time() - s}s")
 
             await websocket.send(b"<END>")
                 
@@ -76,6 +85,9 @@ async def main():
 
     except websockets.exceptions.WebSocketException as e:
         print(f"WebSocket connection failed: {e}")
+
+    # merge all the wavs into one
+    os.system("ffmpeg -f concat -i output_*.wav -c copy output.wav")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -1,4 +1,4 @@
-const SILENCE_THRESHOLD = 0.015;
+const SILENCE_THRESHOLD = 0.0015; // to adjust
 const SAMPLE_RATE = 48000;
 const CHANNEL_DATA_LENGTH = 128;
 const MAX_SEGMENT_LENGTH = 10; // seconds
