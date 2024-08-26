@@ -48,37 +48,56 @@ async def main():
             
             for wav in user_input_generator():
                 s = time.time()
+
+                # sending a wav is a two-step process:
+                await websocket.send(json.dumps({
+                    "type": "wav"
+                }).encode())
                 await websocket.send(wav)
+
                 print(f"Sent WAV chunk in {time.time() - s}s")
 
             history = [
                 {"role": "user", "content": "Hello, how are you?"},
                 {"role": "assistant", "content": "I'm doing well, thank you for asking!"},
             ]
-            await websocket.send(f"<HISTORY>{json.dumps(history)}".encode())
-            await websocket.send(b"<END>")
+            await websocket.send(json.dumps({
+                "type": "history",
+                "value": history
+            }).encode())
+            await websocket.send(json.dumps({
+                "type": "end",
+            }).encode())
                 
             print("Waiting for responses...")
             
             # first response after <END> will be the transcript
-            transcript = await websocket.recv()
-            transcript = transcript.decode().strip().removeprefix("<TRANSCRIPT>").strip()
+            msg_bytes = await websocket.recv()
+            msg = json.loads(msg_bytes.decode())
+            if msg["type"] != "transcript":
+                print(f"Expected transcript, got {msg['type']}")
+                return
+            transcript = msg["value"]
             print(f"Transcript: {transcript}")
 
             i = 0
+            # following responses are in alternating pairs: text, wav
             while True:
-                # following responses are in pairs: text, wav
-                text_response = await websocket.recv()
-                text_response = text_response.decode().strip().removeprefix("<TEXT>").strip()
-                
+                msg_bytes = await websocket.recv()
+                msg = json.loads(msg_bytes.decode())
+                if msg["type"] == "text":
+                    text_response = msg["value"]
+                    print(f"Text response: {text_response}")
 
-                wav_response = await websocket.recv()
-                if i == 0:
-                    print(f"Time since end of user speech to FIRST TTS CHUNK: {time.time() - user_finish_time}s")
+                elif msg["type"] == "wav":
+                    # first response is the json message with type wav
+                    # next response is the wav itself
+                    wav_response = await websocket.recv()
+                    if i == 0:
+                        print(f"Time since end of user speech to FIRST TTS CHUNK: {time.time() - user_finish_time}s")
 
-                print(f"Text response: {text_response}")
-                with open(f"output_{i}.wav", "wb") as f:
-                    f.write(wav_response)
+                    with open(f"output_{i}.wav", "wb") as f:
+                        f.write(wav_response)
 
                 i += 1
 

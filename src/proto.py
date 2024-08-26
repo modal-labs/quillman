@@ -58,6 +58,13 @@ def web():
     async def websocket_endpoint(websocket: WebSocket):
         await websocket.accept()
 
+        # websocket endpoint is a two-way stream of json messages   
+        # { "type": "history", "value": <history> }
+        # { "type": "end" }
+        # { "type": "text", "value": <text> }
+        # { "type": "wav" }
+        #   in the case of type "wav", the following message will be the raw wav bytes rather than json
+
         # temp: testing pipeline timing
         global pipeline_start_time
         pipeline_start_time= time.time()
@@ -67,22 +74,26 @@ def web():
             i = 0
             while True:
                 timeprint("websocket.receive_bytes waiting for WAV chunk", i)
-                wav_bytes = await websocket.receive_bytes()
-
-                if wav_bytes == b"<END>":
-                    timeprint("websocket.receive_bytes received <END> signal")
+                msg_bytes = await websocket.receive_bytes()
+                msg = json.loads(msg_bytes.decode())
+                if msg["type"] == "end":
+                    timeprint("websocket.receive_bytes received END signal")
                     break
-                
-                # chat may have sent previous history
-                if wav_bytes[:9] == b"<HISTORY>":
+                elif msg["type"] == "history":
                     # we're receiving a history chunk
-                    history = json.loads(wav_bytes[9:].decode())
+                    history = msg["value"]
                     timeprint("websocket.receive_bytes received history chunk", history)
                     continue
-
-                timeprint("websocket.receive_bytes received WAV chunk", i)
-                i += 1
-                yield wav_bytes
+                elif msg["type"] == "wav":
+                    # first message is the json signal that we're receiving a wav
+                    # the next message will be the wav bytes itself
+                    wav_bytes = await websocket.receive_bytes()
+                    timeprint("websocket.receive_bytes received WAV chunk", i)
+                    i += 1
+                    yield wav_bytes
+                else:
+                    print(f"websocket.receive_bytes received unknown message type: {msg['type']}")
+                    continue
 
         # We parallel transcribe user input chunks
         transcribe_futures = []
@@ -103,7 +114,10 @@ def web():
             transcript_chunks.append(transcript_chunk)
         transcript = " ".join(transcript_chunks)
         timeprint("TRANSCRIPTION: complete", transcript)
-        await websocket.send_bytes(("<TRANSCRIPT>" + transcript).encode())
+        await websocket.send_bytes(json.dumps({
+            "type": "transcript", 
+            "value": transcript
+        }).encode())
 
         # We now have a single transcript to send to the LLM
         llm_response_stream_gen = zephyr.generate.remote_gen(transcript)
@@ -141,8 +155,17 @@ def web():
         async for text, wav_bytesio in tts_output_stream_gen:
             # Stream the WAV bytes from the TTS service back to the client
             timeprint(f"TTS: sentence {i} completed, sending to client")
-            await websocket.send_bytes(("<TEXT>" + text).encode())
+            await websocket.send_bytes(json.dumps({
+                "type": "text", 
+                "value": text
+            }).encode())
+
+            # send the wav bytes, first the signal, then the actual bytes
+            await websocket.send_bytes(json.dumps({
+                "type": "wav"
+            }).encode())
             await websocket.send_bytes(wav_bytesio.getvalue())
+
             timeprint(f"TTS: sentence {i} sent to client")
             i += 1
 

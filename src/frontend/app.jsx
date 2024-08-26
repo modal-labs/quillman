@@ -6,6 +6,8 @@ function App() {
   const [session, setSession] = useState(false);
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [isUserTalking, setIsUserTalking] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [texts, setTexts] = useState([]);
 
   const socketRef = useRef(null);
   const recorderNodeRef = useRef(null);
@@ -34,7 +36,6 @@ function App() {
   const playNextInQueue = async () => {
     if (isPlaying.current ) {
       // there's already an audio player working on the queue
-      console.log("Audio player already playing");
       return;
     }
     if (audioOutQueue.current.length === 0) {
@@ -46,12 +47,10 @@ function App() {
     const arrayBuffer = audioOutQueue.current.shift();
     try {
       const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
-      console.log("Playing audio");
       const source = audioContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContextRef.current.destination);
       source.onended = () => {
-        console.log('Audio playback ended');
         isPlaying.current = false;
         playNextInQueue();
       };
@@ -65,10 +64,23 @@ function App() {
 
   const onWebsocketMessage = async (event) => {
     console.log("Received response from server");
-    if (event.data instanceof Blob) {
+    console.log(event)
+
+    if (event.data instanceof Blob){
       const arrayBuffer = await event.data.arrayBuffer();
-      audioOutQueue.current.push(arrayBuffer);
-      playNextInQueue();
+      
+      // try to parse out json, else if it fails, it's a wav
+      try {
+        const data = JSON.parse(new TextDecoder().decode(arrayBuffer));
+        if (data.type === "text") {
+          setTexts((texts) => [...texts, data.value]);
+        } else if (data.type === "transcript") {
+          setTranscript(data.value);
+        }
+      } catch {
+        audioOutQueue.current.push(arrayBuffer);
+        playNextInQueue();
+      }
     }
   };
 
@@ -93,10 +105,10 @@ function App() {
         return; 
       }
 
-      // we want to to run the pipeline.
       const wav_buffer = float32ArrayToWav(buffer, 48000);
 
-      // open socket for this pipeline
+      // first send wav signal, then wav data
+      socketRef.current.send(new TextEncoder().encode(`{"type": "wav"}`));
       socketRef.current.send(wav_buffer);
       console.log("Sent wav segment to server");
     };
@@ -112,7 +124,7 @@ function App() {
   }
 
   function endSession() {
-    socketRef.current.send(new TextEncoder().encode('<END>'));
+    socketRef.current.send(new TextEncoder().encode(`{"type": "end"}`));
     setAwaitingResponse(true);
     setSession(false);
   }
@@ -148,6 +160,10 @@ function App() {
         {session ? <h1>Session Active</h1> : <h1>Session Inactive</h1>}
         {session ? <button onClick={endSession}>End Session</button> : <button onClick={startSession}>Start Session</button>}
       </>}
+      <h1>Transcript</h1>
+      <pre>{transcript}</pre>
+      <h1>Texts</h1>
+      <pre>{texts.join("\n")}</pre>
     </div>
   );
 }
