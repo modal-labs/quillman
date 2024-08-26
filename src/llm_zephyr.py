@@ -72,7 +72,7 @@ class Zephyr:
 
         assert len(history) % 2 == 0, "History must be an even number of messages"
 
-        messages = [{ "role": "system", "content": "" }]
+        messages = [{ "role": "system", "content": "You are a helpful assistant responding to an audio call. The first sentence of your response will be sent to the user ASAP so please keep it brief and to the point. You can include more details in follow-up sentences." }]
         for i in range(0, len(history), 2):
             messages.append({ "role": "user", "content": history[i] })
             messages.append({ "role": "user", "content": history[i+1] })
@@ -93,13 +93,12 @@ class Zephyr:
         # Run generation on separate thread to enable response streaming.
         thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
         thread.start()
-        for new_text in self.streamer:
-            print(f"New text: |{new_text}|")
-            # ignore empty words which are sometimes generated
-            if new_text.strip() == "":
+        for next_word in self.streamer:
+            next_word = next_word.strip()
+            if next_word == "":
+                # ignore empty words which are sometimes generated
                 continue
-            print("Yielding")
-            yield new_text
+            yield next_word
         thread.join()
         print(f"Output generated in {time.time() - t0:.2f}s")
 

@@ -31,8 +31,7 @@ def web():
     from fastapi.responses import Response, StreamingResponse
     from fastapi.staticfiles import StaticFiles
     import numpy as np
-    import wave
-    import io
+    import json
     
     web_app = FastAPI()
        
@@ -63,37 +62,24 @@ def web():
         global pipeline_start_time
         pipeline_start_time= time.time()
 
-        wavs = []
-        try:
-            while True:
-                data = await websocket.receive_bytes()
-                # should be chunks of wav
-                
-                if data == b'<END>':
-                    print("Received end signal")
-                    break
-
-                print("Received chunk of size", len(data))
-                wavs.append(data)
-
-            for wav in wavs:
-                await websocket.send_bytes(wav)
-        
-        except Exception as e:
-            print(f"Error: {e}")
-        finally:
-            await websocket.close()
-        return
-
         # Step 1: User streams their input in via WebSocket
         async def user_input_stream_gen():
             i = 0
             while True:
                 timeprint("websocket.receive_bytes waiting for WAV chunk", i)
                 wav_bytes = await websocket.receive_bytes()
+
                 if wav_bytes == b"<END>":
                     timeprint("websocket.receive_bytes received <END> signal")
                     break
+                
+                # chat may have sent previous history
+                if wav_bytes[:9] == b"<HISTORY>":
+                    # we're receiving a history chunk
+                    history = json.loads(wav_bytes[9:].decode())
+                    timeprint("websocket.receive_bytes received history chunk", history)
+                    continue
+
                 timeprint("websocket.receive_bytes received WAV chunk", i)
                 i += 1
                 yield wav_bytes
@@ -124,26 +110,12 @@ def web():
         # llm_response_stream_gen will yield words, which we'll want to 
         # accumulate together into sentences for more natural-sounding TTS.
         punctuation = [".", "?", "!", ":", ";", "*"]
-        max_words = 5
         def tts_input_stream_acccumulator(text_stream):
             chunk_i = 0
             current_chunk = ""
             for word in text_stream:
                 # receives yields from LLM
-                timeprint("LLM GENERATION: yielded word", word)
-
-                # TODO: explore why so many empty words are generated
-
                 current_chunk += word + " "
-
-                # yield if we're above max words
-                if len(current_chunk.split(" ")) > max_words:
-                    # yields sentences to TTS
-                    timeprint(f"TTS: starting sentence {chunk_i}:", current_chunk)
-                    chunk_i += 1
-                    yield current_chunk
-                    current_chunk = ""
-                    continue
 
                 # yield if we're at punctuation
                 for p in punctuation:

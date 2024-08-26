@@ -8,6 +8,7 @@ import wave
 endpoint = "erik-dunteman--quillman-proto-web-dev.modal.run"
 
 import os
+import json
 from pathlib import Path
 
 # We have three sample audio files in the test-audio folder that we'll transcribe
@@ -21,20 +22,6 @@ def user_input_generator():
     for wav in files:
         wav = "test-audio" / Path(wav)
         print(wav)
-
-        # if not first:
-        #     # print("sleeping")
-        #     # # sleep the duration of the wav to simulate the user finishing
-        #     # with wave.open(wav.as_posix(), 'rb') as wav_file:
-        #     #     n_frames = wav_file.getnframes()
-        #     #     frame_rate = wav_file.getframerate()
-        #     #     print("sleeping", n_frames / frame_rate)
-        #     #     time.sleep(n_frames / frame_rate)
-        # else:
-        #     print("sending first wav")
-        #     # immedietly send the first wav to make faster
-        #     first = False
-
         with open(wav, "rb") as f:
             yield f.read()
 
@@ -65,6 +52,12 @@ async def main():
                 s = time.time()
                 await websocket.send(wav)
                 print(f"Sent WAV chunk in {time.time() - s}s")
+
+            history = [
+                {"role": "user", "content": "Hello, how are you?"},
+                {"role": "assistant", "content": "I'm doing well, thank you for asking!"},
+            ]
+            await websocket.send(f"<HISTORY>{json.dumps(history)}".encode())
 
             await websocket.send(b"<END>")
                 

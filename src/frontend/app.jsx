@@ -4,6 +4,7 @@ const { useState, useEffect, useRef } = React;
 
 function App() {
   const [session, setSession] = useState(false);
+  const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [isUserTalking, setIsUserTalking] = useState(false);
 
   const socketRef = useRef(null);
@@ -31,8 +32,14 @@ function App() {
   
   // audio player
   const playNextInQueue = async () => {
-    if (audioOutQueue.current.length === 0 || isPlaying.current) {
-      // prevent playing if we're already playing or there's nothing in the queue
+    if (isPlaying.current ) {
+      // there's already an audio player working on the queue
+      console.log("Audio player already playing");
+      return;
+    }
+    if (audioOutQueue.current.length === 0) {
+      // this player has reached the end of the queue
+      setAwaitingResponse(false);
       return;
     }
     isPlaying.current = true;
@@ -106,6 +113,7 @@ function App() {
 
   function endSession() {
     socketRef.current.send(new TextEncoder().encode('<END>'));
+    setAwaitingResponse(true);
     setSession(false);
   }
   
@@ -135,9 +143,11 @@ function App() {
   return (
     <div className="app">
       <h1>QuiLLMan</h1>
-      {isUserTalking ? <h1>User Talking</h1> : <h1>User Silent</h1>}
-      {session ? <h1>Session Active</h1> : <h1>Session Inactive</h1>}
-      {session ? <button onClick={endSession}>End Session</button> : <button onClick={startSession}>Start Session</button>}
+      {awaitingResponse ? <h1>Awaiting Response</h1> : <>
+        {isUserTalking ? <h1>User Talking</h1> : <h1>User Silent</h1>}
+        {session ? <h1>Session Active</h1> : <h1>Session Inactive</h1>}
+        {session ? <button onClick={endSession}>End Session</button> : <button onClick={startSession}>Start Session</button>}
+      </>}
     </div>
   );
 }
