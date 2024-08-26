@@ -32,8 +32,8 @@ with tts_image.imports():
     image=tts_image,
     gpu="A10G",
     container_idle_timeout=600,
-    timeout=180,
-    concurrency_limit=1, # it's slow to load so no use spawning more than one
+    timeout=600, # slow load so make sure timeout is long enough to support model load
+    concurrency_limit=1, 
 )
 class XTTS:
     def __init__(self):
@@ -74,13 +74,14 @@ class XTTS:
         )
 
         # # return wav as a file object
-        return wav_file
+        return text, wav_file
 
 
 @app.local_entrypoint()
 def tts_entrypoint(text: str):
     tts = XTTS()
 
-    wav = tts.speak.remote(text)
+    text, wav = tts.speak.remote(text)
+    print(text)
     with open(f"output.wav", "wb") as f:
         f.write(wav.getvalue())

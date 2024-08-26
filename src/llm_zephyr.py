@@ -33,7 +33,8 @@ with zephyr_image.imports():
 @app.cls(
     image=zephyr_image, 
     gpu="A10G", 
-    container_idle_timeout=300
+    container_idle_timeout=300,
+    timeout=300,
 )
 class Zephyr:
     def __init__(self):
@@ -72,7 +73,7 @@ class Zephyr:
 
         assert len(history) % 2 == 0, "History must be an even number of messages"
 
-        messages = [{ "role": "system", "content": "You are a helpful assistant responding to an audio call. The first sentence of your response will be sent to the user ASAP so please keep it brief and to the point. You can include more details in follow-up sentences." }]
+        messages = [{ "role": "system", "content": "" }]
         for i in range(0, len(history), 2):
             messages.append({ "role": "user", "content": history[i] })
             messages.append({ "role": "user", "content": history[i+1] })

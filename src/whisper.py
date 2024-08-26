@@ -31,6 +31,7 @@ with whisper_image.imports():
     gpu="A10G",
     image=whisper_image,
     container_idle_timeout=300,
+    timeout=300,
 )
 class Whisper:
     def __init__(self):

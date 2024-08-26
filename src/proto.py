@@ -103,6 +103,7 @@ def web():
             transcript_chunks.append(transcript_chunk)
         transcript = " ".join(transcript_chunks)
         timeprint("TRANSCRIPTION: complete", transcript)
+        await websocket.send_bytes(("<TRANSCRIPT>" + transcript).encode())
 
         # We now have a single transcript to send to the LLM
         llm_response_stream_gen = zephyr.generate.remote_gen(transcript)
@@ -137,10 +138,11 @@ def web():
         # Stream the sentences from the accumulator into the TTS service
         tts_output_stream_gen = xtts.speak.map(tts_input_stream_gen)
         i = 0
-        async for wavBytesIO in tts_output_stream_gen:
+        async for text, wav_bytesio in tts_output_stream_gen:
             # Stream the WAV bytes from the TTS service back to the client
             timeprint(f"TTS: sentence {i} completed, sending to client")
-            await websocket.send_bytes(wavBytesIO.getvalue())
+            await websocket.send_bytes(("<TEXT>" + text).encode())
+            await websocket.send_bytes(wav_bytesio.getvalue())
             timeprint(f"TTS: sentence {i} sent to client")
             i += 1
 

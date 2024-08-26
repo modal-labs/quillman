@@ -3,7 +3,6 @@ import asyncio
 import websockets
 import os
 import requests
-import wave
 
 endpoint = "erik-dunteman--quillman-proto-web-dev.modal.run"
 
@@ -18,7 +17,6 @@ files.sort()
 # we're simulating a user speaking into a microphone
 user_finish_time = None
 def user_input_generator():
-    first = True
     for wav in files:
         wav = "test-audio" / Path(wav)
         print(wav)
@@ -58,29 +56,34 @@ async def main():
                 {"role": "assistant", "content": "I'm doing well, thank you for asking!"},
             ]
             await websocket.send(f"<HISTORY>{json.dumps(history)}".encode())
-
             await websocket.send(b"<END>")
                 
             print("Waiting for responses...")
+            
+            # first response after <END> will be the transcript
+            transcript = await websocket.recv()
+            transcript = transcript.decode().strip().removeprefix("<TRANSCRIPT>").strip()
+            print(f"Transcript: {transcript}")
+
             i = 0
             while True:
-                response = await websocket.recv()
+                # following responses are in pairs: text, wav
+                text_response = await websocket.recv()
+                text_response = text_response.decode().strip().removeprefix("<TEXT>").strip()
+                
+
+                wav_response = await websocket.recv()
                 if i == 0:
                     print(f"Time since end of user speech to FIRST TTS CHUNK: {time.time() - user_finish_time}s")
 
-                if not isinstance(response, bytes):
-                    raise TypeError("Expected bytes from websocket, got {type(response)}")
-                
+                print(f"Text response: {text_response}")
                 with open(f"output_{i}.wav", "wb") as f:
-                    f.write(response)
+                    f.write(wav_response)
 
                 i += 1
 
     except websockets.exceptions.WebSocketException as e:
-        print(f"WebSocket connection failed: {e}")
-
-    # merge all the wavs into one
-    os.system("ffmpeg -f concat -i output_*.wav -c copy output.wav")
+        pass
 
 if __name__ == "__main__":
     asyncio.run(main())
