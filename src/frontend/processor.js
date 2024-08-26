@@ -1,103 +1,68 @@
-const SILENCE_THRESHOLD = 0.0015; // to adjust
-const SAMPLE_RATE = 48000;
-const CHANNEL_DATA_LENGTH = 128;
-const MAX_SEGMENT_LENGTH = 10; // seconds
-const MIN_TALKING_TIME = 2; // seconds
-const AMPLITUDE_WINDOW = 0.5; // seconds
-
 class WorkletProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
-    this._bufferSize = MAX_SEGMENT_LENGTH * SAMPLE_RATE;
-    this._buffer = new Float32Array(this._bufferSize);
-    this._writeIndex = 0;
+    
+    // Configuration
+    const processorOptions = options.processorOptions || {};
+    this.SILENCE_THRESHOLD = 0.01;
+    this.SILENCE_DURATION = 1; // seconds of silence before we send a buffer
 
-    this._amplitudeHistorySize = Math.floor(
-      (AMPLITUDE_WINDOW * SAMPLE_RATE) / CHANNEL_DATA_LENGTH
-    );
-    this._lastAmplitudes = new Array();
-    this._amplitudeSum = 0;
-    this._stopped = false;
-    this._lastEventState = null;
-    this._lastEventTime = new Date();
-    this._talkingTime = 0;
+    // State
+    this._buffer = [];
+    this._isTalking = false;
+    this._silenceCounter = 0;
 
-    this.port.onmessage = (event) => {
-      if (event.data.type === "stop") {
-        this._stopped = true;
-        if (this._lastEventState !== "silence") {
-          this.port.postMessage({ type: "silence" });
-        }
-        this._maybeSendSegment();
-      } else if (event.data.type === "start") {
-        this._talkingTime = 0;
-        this._writeIndex = 0;
-        this._stopped = false;
-        this._lastEventState = null;
-        this._lastEventTime = new Date();
-      }
-    };
-  }
-
-  _maybeSendSegment() {
-    if (this._talkingTime > MIN_TALKING_TIME) {
-      console.log("Sending segment");
-      this.port.postMessage({ type: "segment", buffer: this._buffer });
-    }
+    // The sampleRate is globally available in AudioWorkletProcessor
+    console.log(`Initialized with sample rate: ${sampleRate}`);
   }
 
   process(inputs, outputs, parameters) {
-    if (this._stopped) {
-      return true;
-    }
-    const channelData = inputs[0][0];
+    const input = inputs[0][0];
+    if (!input) return true; // Early return if no input
 
-    const amplitude =
-      channelData.reduce((s, v) => s + Math.abs(v), 0) / channelData.length;
-
-    if (this._lastAmplitudes.length >= this._amplitudeHistorySize) {
-      const front = this._lastAmplitudes.shift();
-      this._amplitudeSum -= front;
-    }
-
-    this._lastAmplitudes.push(amplitude);
-    this._amplitudeSum += amplitude;
-
-    const averageAmplitude = this._amplitudeSum / this._lastAmplitudes.length;
-
-    this._buffer.set(channelData, this._writeIndex);
-    this._writeIndex += channelData.length;
-    const remainingBufferSize = this._bufferSize - this._writeIndex;
-
-    if (averageAmplitude > SILENCE_THRESHOLD) {
-      if (this._lastEventState !== "talking") {
-        this._lastEventState = "talking";
-        this.port.postMessage({ type: "talking" });
+    const amplitude = this._calculateAmplitude(input);
+    
+    // every time user goes above threshold, we start recording
+    // staying above that threshold maintains the recording state
+    if (amplitude > this.SILENCE_THRESHOLD) {
+      if (!this._isTalking) {
+        // this means there was a state transition so send signal to main thread
+        this.port.postMessage({ type: 'talking' });
       }
+      this._silenceCounter = 0;
+      this._isTalking = true;
     } else {
-      if (this._lastEventState !== "silence") {
-        this._talkingTime += (new Date() - this._lastEventTime) / 1000;
-        this._lastEventState = "silence";
-        this._lastEventTime = new Date();
-        this.port.postMessage({ type: "silence" });
-      }
+      // increment silence counter
+      this._silenceCounter += input.length / sampleRate;
     }
 
-    // If we have a silence or are running out of buffer space, send everything
-    // we have if it's long enough, and then reset the buffer.
-    if (
-      (averageAmplitude <= SILENCE_THRESHOLD &&
-        this._talkingTime > MIN_TALKING_TIME) ||
-      remainingBufferSize < channelData.length
-    ) {
-      this._maybeSendSegment();
-      this._buffer = new Float32Array(this._bufferSize);
-      this._writeIndex = 0;
-      this._talkingTime = 0;
-      this._lastEventTime = new Date();
+    if (this._isTalking && this._silenceCounter <= this.SILENCE_DURATION) {
+      // if we're talking and we're not at the end of the silence duration, add to buffer
+      this._buffer.push(...input);
+    }
+
+    if (this._isTalking && this._silenceCounter >= this.SILENCE_DURATION) {
+      // if we're talking and we're at the end of the silence duration, send buffer
+      this._isTalking = false;
+      this._sendBuffer();
+      this.port.postMessage({ type: 'silence' });
     }
 
     return true;
+  }
+
+  _calculateAmplitude(channelData) {
+    return channelData.reduce((sum, value) => sum + Math.abs(value), 0) / channelData.length;
+  }
+
+  _sendBuffer() {
+    if (this._buffer.length > 0) {
+      this.port.postMessage({
+        type: 'buffer',
+        buffer: this._buffer
+      });
+      this._buffer = [];
+    }
   }
 }
 

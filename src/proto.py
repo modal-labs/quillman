@@ -54,24 +54,6 @@ def web():
             i.get()
 
         return Response(status_code=200)
-    
-    def float32_to_wav(float32_buffer, sample_rate=44100):
-        # Convert to int16
-        int16_data = (float32_buffer * 32767).astype(np.int16)
-        
-        # Create an in-memory binary stream
-        byte_io = io.BytesIO()
-        
-        # Create WAV file in the binary stream
-        with wave.open(byte_io, 'wb') as wav_file:
-            wav_file.setnchannels(1)  # Mono
-            wav_file.setsampwidth(2)  # 2 bytes per sample (16 bits)
-            wav_file.setframerate(sample_rate)
-            wav_file.writeframes(int16_data.tobytes())
-        
-        # Get the WAV data as bytes
-        wav_data = byte_io.getvalue()
-        return wav_data
 
     @web_app.websocket("/pipeline")
     async def websocket_endpoint(websocket: WebSocket):
@@ -81,34 +63,21 @@ def web():
         global pipeline_start_time
         pipeline_start_time= time.time()
 
-
-        # TEMP: make very simple
-        buffer = b""
+        wavs = []
         try:
             while True:
                 data = await websocket.receive_bytes()
+                # should be chunks of wav
                 
                 if data == b'<END>':
-                    # Handle end of transmission
-                    if buffer:
-                        # Process any remaining data in the buffer
-                        float32_buffer = np.frombuffer(buffer, dtype=np.float32)
-                        wav_data = float32_to_wav(float32_buffer)
-                        await websocket.send_bytes(wav_data)
+                    print("Received end signal")
                     break
-                
-                buffer += data
-                
-                # Process as many complete float32 samples as possible
-                num_complete_samples = len(buffer) // 4  # 4 bytes per float32
-                if num_complete_samples > 0:
-                    complete_data = buffer[:num_complete_samples * 4]
-                    buffer = buffer[num_complete_samples * 4:]
-                    
-                    float32_buffer = np.frombuffer(complete_data, dtype=np.float32)
-                    wav_data = float32_to_wav(float32_buffer)
-                    
-                    await websocket.send_bytes(wav_data)
+
+                print("Received chunk of size", len(data))
+                wavs.append(data)
+
+            for wav in wavs:
+                await websocket.send_bytes(wav)
         
         except Exception as e:
             print(f"Error: {e}")
