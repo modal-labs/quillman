@@ -36,23 +36,23 @@ function App() {
 
   // poll https://erik-dunteman--quillman-proto-web-dev.modal.run/status
   // to check if models are warm
-  useEffect(() => {
-    const intervalId = setInterval(async () => {
-      try {
-        const response = await fetch(`https://${backendUrl}/status`);
-        if (!response.ok) {
-          throw new Error("Error occurred during status check: " + response.status);
-        }
-        const data = await response.json();
-        setWhisperStatus(data.whisper);
-        setZephyrStatus(data.zephyr);
-        setXttsStatus(data.xtts);
-      } catch (error) {
-        console.error(error);
-      }
-    }, 1000);
-    return () => clearInterval(intervalId);
-  }, []);
+  // useEffect(() => {
+  //   const intervalId = setInterval(async () => {
+  //     try {
+  //       const response = await fetch(`https://${backendUrl}/status`);
+  //       if (!response.ok) {
+  //         throw new Error("Error occurred during status check: " + response.status);
+  //       }
+  //       const data = await response.json();
+  //       setWhisperStatus(data.whisper);
+  //       setZephyrStatus(data.zephyr);
+  //       setXttsStatus(data.xtts);
+  //     } catch (error) {
+  //       console.error(error);
+  //     }
+  //   }, 1000);
+  //   return () => clearInterval(intervalId);
+  // }, []);
 
   const socketRef = useRef(null);
   const recorderNodeRef = useRef(null);
@@ -63,20 +63,24 @@ function App() {
 
   // create a websocket connection
   function openWebsocket(onMessageCallback) {
-    const socket = new WebSocket(`wss://${backendUrl}/pipeline`);
-    socket.onopen = () => {
-      console.log('WebSocket connection established');
-    };
-    socket.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
-    socket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-    socket.onmessage = onMessageCallback;
-    return socket;
-  }
-  
+    return new Promise((resolve, reject) => {
+      const socket = new WebSocket(`wss://${backendUrl}/pipeline`);
+      socket.onopen = () => {
+        console.log('WebSocket connection established');
+        resolve(socket);
+      };
+      socket.onclose = () => {
+        console.log('WebSocket connection closed');
+      };
+      socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        reject(error);
+      };
+      socket.onmessage = onMessageCallback;
+      return socket;
+    }
+  )};
+
   // audio player
   const playNextInQueue = async () => {
     if (isPlaying.current ) {
@@ -178,15 +182,12 @@ function App() {
   };
 
   async function maybeStartRecordingSession() {
-    if (awaitingResponse) {
+    if (awaitingResponse || isRecordingSessionRef.current) {
       return;
     }
+
+    socketRef.current = await openWebsocket(onWebsocketMessage);
     setIsRecordingSession(true);
-    socketRef.current = openWebsocket(onWebsocketMessage);
-    await new Promise((resolve, reject) => {
-      socketRef.current.onopen = resolve;
-      socketRef.current.onerror = reject;
-    });
   }
 
   function endRecordingSession() {
