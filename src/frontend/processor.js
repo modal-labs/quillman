@@ -17,6 +17,7 @@ class WorkletProcessor extends AudioWorkletProcessor {
     this._isTalking = false;
     this._isRecordingSession = false;
     this._silenceCounter = 0;
+    this.muted = true;
 
     // Add message event listener
     this.port.onmessage = this.handleMessage.bind(this);
@@ -27,11 +28,22 @@ class WorkletProcessor extends AudioWorkletProcessor {
       this.talkingThreshold = event.data.value;
       console.log('Updated talkingThreshold:', this.talkingThreshold);
     }
+    // mute
+    if (event.data.type === 'mute') {
+      this.muted = true;
+      console.log('Muted');
+    }
+    if (event.data.type === 'unmute') {
+      this.muted = false;
+      console.log('Unmuted');
+    }
   }
 
   process(inputs, outputs, parameters) {
     const input = inputs[0][0];
     if (!input) return true; // Early return if no input
+
+    if (this.muted) return true;
 
     const amplitude = this._calculateAmplitude(input);
     this.port.postMessage({ type: 'amplitude', value: amplitude });

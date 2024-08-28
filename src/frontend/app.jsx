@@ -8,6 +8,11 @@ const backendUrl = "erik-dunteman--quillman-proto-web.modal.run";
 function App() {
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [isRecordingSession, setIsRecordingSession] = useState(false);
+  const isRecordingSessionRef = useRef(false);
+  useEffect(() => {
+    isRecordingSessionRef.current = isRecordingSession;
+  }, [isRecordingSession]);
+
   const [micAmplitude, setMicAmplitude] = useState(0);
   const [micThreshold, setMicThreshold] = useState(0.1);
   const [whisperStatus, setWhisperStatus] = useState(false);
@@ -152,28 +157,25 @@ function App() {
     setMicAmplitude(amplitude);
   }
 
-  // Update onMicBufferReceiveRef whenever recordingSession changes
-  useEffect(() => {
-    onMicBufferReceiveRef.current = async (buffer) => {
-      // ignore if not in a recordingSession
-      if (isRecordingSession === false) {
-        console.log("Buffer received but not recording, ignoring");
-        return;
-      }
+  async function onBufferRecived(buffer) {
+    // ignore if not in a recordingSession
+    if (isRecordingSessionRef.current === false) {
+      console.log("Buffer received but not recording, ignoring");
+      return;
+    }
 
-      if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-        console.log("Websocket not open, this is bad");
-        return; 
-      }
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      console.log("Websocket not open, this is bad");
+      return; 
+    }
 
-      const wav_buffer = float32ArrayToWav(buffer, 48000);
+    const wav_buffer = float32ArrayToWav(buffer, 48000);
 
-      // first send wav signal, then wav data
-      socketRef.current.send(new TextEncoder().encode(`{"type": "wav"}`));
-      socketRef.current.send(wav_buffer);
-      console.log("Sent wav segment to server");
-    };
-  }, [isRecordingSession]);
+    // first send wav signal, then wav data
+    socketRef.current.send(new TextEncoder().encode(`{"type": "wav"}`));
+    socketRef.current.send(wav_buffer);
+    console.log("Sent wav segment to server");
+  };
 
   async function maybeStartRecordingSession() {
     if (awaitingResponse) {
@@ -188,7 +190,7 @@ function App() {
   }
 
   function endRecordingSession() {
-    if (isRecordingSession === false) {
+    if (isRecordingSessionRef.current === false) {
       return;
     }
     socketRef.current.send(new TextEncoder().encode(`{"type": "end"}`));
@@ -208,7 +210,7 @@ function App() {
       await context.audioWorklet.addModule("processor.js");
       const recorderNode = new RecorderNode(
         context,
-        (...args) => onMicBufferReceiveRef.current(...args),
+        onBufferRecived,
         onTalking,
         onSilence,
         onAmplitude,
@@ -251,6 +253,8 @@ function App() {
               ●
             </div>
           </div>
+          <button onClick={() => recorderNodeRef.current.mute()}>Mute</button>
+          <button onClick={() => recorderNodeRef.current.unmute()}>Unmute</button>
           <div>
             <MicLevels micAmplitude={micAmplitude} micThreshold={micThreshold} isRecordingSession={isRecordingSession} updateMicThreshold={updateMicThreshold} />
           </div>
