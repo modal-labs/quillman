@@ -7,6 +7,7 @@ from os import pipe
 from pathlib import Path
 from string import punctuation
 import modal
+import modal.container_process
 import time
 from .xtts import XTTS
 from .whisper import Whisper
@@ -22,25 +23,48 @@ static_path = Path(__file__).with_name("frontend").resolve()
 
 @app.function(
     # mounts=[modal.Mount.from_local_dir(static_path, remote_path="/assets")],
-    container_idle_timeout=300,
+    container_idle_timeout=600,
     timeout=600,
 )
 @modal.asgi_app()
 def web():
-    from fastapi import FastAPI, Request, Response, WebSocket
-    from fastapi.responses import Response, StreamingResponse
+    from fastapi import FastAPI, Response, WebSocket
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import Response
     from fastapi.staticfiles import StaticFiles
+    import fastapi
+
     import numpy as np
     import json
     
     web_app = FastAPI()
+
+    web_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
        
     # serve static files
     # web_app.mount("/", StaticFiles(directory="/assets", html=True))
 
+    # other Cls-based services on my app
     whisper = Whisper()
     zephyr = Zephyr()
     xtts = XTTS()
+
+    @web_app.get("/status")
+    async def status():
+        whisper_stats = whisper.prewarm.get_current_stats()
+        zephyr_stats = zephyr.prewarm.get_current_stats()
+        xtts_stats = xtts.prewarm.get_current_stats()
+        return {
+            "whisper": whisper_stats.num_total_runners > 0 and whisper_stats.backlog == 0,
+            "zephyr": zephyr_stats.num_total_runners > 0 and zephyr_stats.backlog == 0,
+            "xtts": xtts_stats.num_total_runners > 0 and xtts_stats.backlog == 0,
+        }
 
     @web_app.get("/prewarm")
     async def prewarm():
@@ -73,7 +97,7 @@ def web():
         async def user_input_stream_gen():
             i = 0
             while True:
-                timeprint("websocket.receive_bytes waiting for WAV chunk", i)
+                timeprint("web socket.receive_bytes waiting for WAV chunk", i)
                 msg_bytes = await websocket.receive_bytes()
                 msg = json.loads(msg_bytes.decode())
                 if msg["type"] == "end":

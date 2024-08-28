@@ -30,7 +30,7 @@ with whisper_image.imports():
 @app.cls(
     gpu="A10G",
     image=whisper_image,
-    container_idle_timeout=300,
+    container_idle_timeout=600,
     timeout=300,
 )
 class Whisper:
