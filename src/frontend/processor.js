@@ -1,5 +1,5 @@
-const PAUSE_DURATION = 3; // seconds of silence before sending a chunk
-const END_DURATION = 10; // seconds of silence before ending recording
+const PAUSE_DURATION = 0.5; // seconds of silence before sending a chunk
+const END_DURATION = 3; // seconds of silence before ending recording
 
 class WorkletProcessor extends AudioWorkletProcessor {
   constructor(options) {

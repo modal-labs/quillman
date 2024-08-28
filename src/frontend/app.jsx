@@ -7,11 +7,7 @@ const backendUrl = "erik-dunteman--quillman-proto-web.modal.run";
 
 function App() {
   const [awaitingResponse, setAwaitingResponse] = useState(false);
-  const [isRecordingSession, setIsRecordingSession] = useState(false);
   const isRecordingSessionRef = useRef(false);
-  useEffect(() => {
-    isRecordingSessionRef.current = isRecordingSession;
-  }, [isRecordingSession]);
 
   const [micAmplitude, setMicAmplitude] = useState(0);
   const [micThreshold, setMicThreshold] = useState(0.1);
@@ -89,6 +85,10 @@ function App() {
     }
     if (audioOutQueue.current.length === 0) {
       // this player has reached the end of the queue
+
+      // prepare for next round of audio
+      socketRef.current = await openWebsocket(onWebsocketMessage);
+
       setAwaitingResponse(false);
       return;
     }
@@ -169,8 +169,8 @@ function App() {
     }
 
     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-      console.log("Websocket not open, this is bad");
-      return; 
+      console.log("Websocket not open yet, this is unexpected");
+      return;
     }
 
     const wav_buffer = float32ArrayToWav(buffer, 48000);
@@ -186,8 +186,7 @@ function App() {
       return;
     }
 
-    socketRef.current = await openWebsocket(onWebsocketMessage);
-    setIsRecordingSession(true);
+    isRecordingSessionRef.current = true;
   }
 
   function endRecordingSession() {
@@ -197,7 +196,7 @@ function App() {
     socketRef.current.send(new TextEncoder().encode(`{"type": "end"}`));
     console.log("Sent end signal to server");
     setAwaitingResponse(true);
-    setIsRecordingSession(false);
+    isRecordingSessionRef.current = false;
   }
   
   // set up local audio recording process
@@ -220,6 +219,9 @@ function App() {
   
       source.connect(recorderNode);
       recorderNode.connect(context.destination);
+
+      // set up first websocket connection
+      socketRef.current = await openWebsocket(onWebsocketMessage);
     }
     onMount();
   }, []);
@@ -257,13 +259,13 @@ function App() {
           <button onClick={() => recorderNodeRef.current.mute()}>Mute</button>
           <button onClick={() => recorderNodeRef.current.unmute()}>Unmute</button>
           <div>
-            <MicLevels micAmplitude={micAmplitude} micThreshold={micThreshold} isRecordingSession={isRecordingSession} updateMicThreshold={updateMicThreshold} />
+            <MicLevels micAmplitude={micAmplitude} micThreshold={micThreshold} isRecordingSession={isRecordingSessionRef.current} updateMicThreshold={updateMicThreshold} />
           </div>
         </div>
       </div>
       <div className="bg-gray-700 w-5/6 flex flex-col items-center p-3 px-6">
         <h1>Chat</h1>
-        {isRecordingSession ? <h1>Recording</h1> : <h1>Not Recording</h1>}
+        {isRecordingSessionRef.current ? <h1>Recording</h1> : <h1>Not Recording</h1>}
         {botAwake ? <>
           {history.map(({ isUser, text }) => (
             <ChatMessage text={text} isUser={isUser} key={text} />
