@@ -25,7 +25,6 @@ static_path = Path(__file__).with_name("frontend").resolve()
     # mounts=[modal.Mount.from_local_dir(static_path, remote_path="/assets")],
     container_idle_timeout=600,
     timeout=600,
-    max_concurrency=1,
 )
 @modal.asgi_app()
 def web():
