@@ -1,5 +1,5 @@
-const SPEAKING_THRESHOLD = 0.02; // trigger threshold to start recording
-const SILENCE_DURATION = 0.5; // seconds of silence before ending recording
+const PAUSE_DURATION = 3; // seconds of silence before sending a chunk
+const END_DURATION = 10; // seconds of silence before ending recording
 
 class WorkletProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -7,13 +7,26 @@ class WorkletProcessor extends AudioWorkletProcessor {
     
     // Configuration
     const processorOptions = options.processorOptions || {};
-    this.SPEAKING_THRESHOLD = SPEAKING_THRESHOLD;
-    this.SILENCE_DURATION = SILENCE_DURATION;
+    this.PAUSE_DURATION = PAUSE_DURATION;
+    this.END_DURATION = END_DURATION;
+
+    this.talkingThreshold = 0.1; // initial value
 
     // State
     this._buffer = [];
     this._isTalking = false;
+    this._isRecordingSession = false;
     this._silenceCounter = 0;
+
+    // Add message event listener
+    this.port.onmessage = this.handleMessage.bind(this);
+  }
+
+  handleMessage(event) {
+    if (event.data.type === 'updateThreshold') {
+      this.talkingThreshold = event.data.value;
+      console.log('Updated talkingThreshold:', this.talkingThreshold);
+    }
   }
 
   process(inputs, outputs, parameters) {
@@ -21,28 +34,30 @@ class WorkletProcessor extends AudioWorkletProcessor {
     if (!input) return true; // Early return if no input
 
     const amplitude = this._calculateAmplitude(input);
+    this.port.postMessage({ type: 'amplitude', value: amplitude });
     
     // every time user goes above threshold, we start recording
     // staying above that threshold maintains the recording state
-    if (amplitude > this.SPEAKING_THRESHOLD) {
+    if (amplitude > this.talkingThreshold) {
       if (!this._isTalking) {
         // this means there was a state transition so send signal to main thread
         this.port.postMessage({ type: 'talking' });
       }
       this._silenceCounter = 0;
       this._isTalking = true;
+      this._isRecordingSession = true;
     } else {
       // increment silence counter
       this._silenceCounter += input.length / sampleRate;
     }
 
-    if (this._isTalking && this._silenceCounter <= this.SILENCE_DURATION) {
-      // if we're talking and we're not at the end of the silence duration, add to buffer
+    // add to buffer if recording session
+    if (this._isRecordingSession) {
       this._buffer.push(...input);
     }
 
-    if (this._isTalking && this._silenceCounter >= this.SILENCE_DURATION) {
-      // if we're talking and we're at the end of the silence duration, send buffer
+    // send accumulated buffer if user pauses
+    if (this._isTalking && this._silenceCounter >= this.PAUSE_DURATION) {
       this._isTalking = false;
       if (this._buffer.length > 0) {
         this.port.postMessage({
@@ -51,9 +66,16 @@ class WorkletProcessor extends AudioWorkletProcessor {
         });
         this._buffer = [];
       }
-      this.port.postMessage({ type: 'silence' });
     }
 
+    // end recording session if silence exceeds end duration. This triggers the bot to generate a response
+    if (this._isRecordingSession && !this._isTalking && this._silenceCounter >= this.END_DURATION) {
+      console.log("Processor.js sending silence")
+      this.port.postMessage({ type: 'silence' });
+      this._isRecordingSession = false;
+      this._buffer = [];
+    }
+    
     return true;
   }
 

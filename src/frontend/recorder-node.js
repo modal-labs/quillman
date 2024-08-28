@@ -1,20 +1,27 @@
 class RecorderNode extends AudioWorkletNode {
-  constructor(context, onBufferReceived, onSilence, onTalking, options = {}) {
+  constructor(context, onBufferReceived, onTalking, onSilence, onAmplitude, options = {}) {
     super(context, "worklet-processor");
     
     this.port.onmessage = (event) => {
       switch(event.data.type) {
-        case 'buffer':
+        case 'buffer': // buffers are sent on brief pauses
           onBufferReceived(event.data.buffer);
           break;
-        case 'silence':
+        case 'talking': // on user talking
+          onTalking();
+          break;
+        case 'silence': // on prolonged silence
           onSilence();
           break;
-        case 'talking':
-          onTalking();
+        case 'amplitude':
+          onAmplitude(event.data.value);
           break;
       }
     };
+  }
+
+  updateThreshold(value) {
+    this.port.postMessage({ type: 'updateThreshold', value });
   }
 }
 

@@ -6,9 +6,10 @@ const { useState, useEffect, useRef } = React;
 const backendUrl = "erik-dunteman--quillman-proto-web.modal.run";
 
 function App() {
-  const [session, setSession] = useState(false);
   const [awaitingResponse, setAwaitingResponse] = useState(false);
-  const [isUserTalking, setIsUserTalking] = useState(false);
+  const [isRecordingSession, setIsRecordingSession] = useState(false);
+  const [micAmplitude, setMicAmplitude] = useState(0);
+  const [micThreshold, setMicThreshold] = useState(0.1);
   const [whisperStatus, setWhisperStatus] = useState(false);
   const [zephyrStatus, setZephyrStatus] = useState(false);
   const [xttsStatus, setXttsStatus] = useState(false);
@@ -102,19 +103,13 @@ function App() {
   };
 
   const onWebsocketMessage = async (event) => {
-    console.log("Received response from server");
-    console.log(event)
-
     if (event.data instanceof Blob){
       const arrayBuffer = await event.data.arrayBuffer();
       
       // try to parse out json, else if it fails, it's a wav
       try {
         const data = JSON.parse(new TextDecoder().decode(arrayBuffer));
-        if (data.type === "text") {
-          console.log("Received text message", data.value);
-          console.log("History", history);
-        
+        if (data.type === "text") {        
           setHistory((prevHistory) => {
             const lastMessage = prevHistory[prevHistory.length - 1];
         
@@ -145,19 +140,24 @@ function App() {
     }
   };
 
-  function onSilence() {
-    setIsUserTalking(false);
-  }
-
   function onTalking() {
-    setIsUserTalking(true);
+    maybeStartRecordingSession();
   }
 
-  // Update onMicBufferReceiveRef whenever session changes
+  function onSilence() {
+    endRecordingSession();
+  }
+
+  function onAmplitude(amplitude) {
+    setMicAmplitude(amplitude);
+  }
+
+  // Update onMicBufferReceiveRef whenever recordingSession changes
   useEffect(() => {
     onMicBufferReceiveRef.current = async (buffer) => {
-      // ignore if not in a session
-      if (session === false) {
+      // ignore if not in a recordingSession
+      if (isRecordingSession === false) {
+        console.log("Buffer received but not recording, ignoring");
         return;
       }
 
@@ -173,25 +173,28 @@ function App() {
       socketRef.current.send(wav_buffer);
       console.log("Sent wav segment to server");
     };
-  }, [session]);
+  }, [isRecordingSession]);
 
-  async function startSession() {
+  async function maybeStartRecordingSession() {
     if (awaitingResponse) {
       return;
     }
-
+    setIsRecordingSession(true);
     socketRef.current = openWebsocket(onWebsocketMessage);
     await new Promise((resolve, reject) => {
       socketRef.current.onopen = resolve;
       socketRef.current.onerror = reject;
     });
-    setSession(true);
   }
 
-  function endSession() {
+  function endRecordingSession() {
+    if (isRecordingSession === false) {
+      return;
+    }
     socketRef.current.send(new TextEncoder().encode(`{"type": "end"}`));
+    console.log("Sent end signal to server");
     setAwaitingResponse(true);
-    setSession(false);
+    setIsRecordingSession(false);
   }
   
   // set up local audio recording process
@@ -206,8 +209,9 @@ function App() {
       const recorderNode = new RecorderNode(
         context,
         (...args) => onMicBufferReceiveRef.current(...args),
-        onSilence,
         onTalking,
+        onSilence,
+        onAmplitude,
       );
       recorderNodeRef.current = recorderNode;
   
@@ -216,6 +220,12 @@ function App() {
     }
     onMount();
   }, []);
+
+  const updateMicThreshold = (value) => {
+    // update both in the recorder node and UI state
+    recorderNodeRef.current.updateThreshold(value);
+    setMicThreshold(value);
+  };
 
   return (
     <div className="app absolute h-screen w-screen flex text-white">
@@ -241,12 +251,14 @@ function App() {
               ●
             </div>
           </div>
+          <div>
+            <MicLevels micAmplitude={micAmplitude} micThreshold={micThreshold} isRecordingSession={isRecordingSession} updateMicThreshold={updateMicThreshold} />
+          </div>
         </div>
       </div>
       <div className="bg-gray-700 w-5/6 flex flex-col items-center p-3 px-6">
         <h1>Chat</h1>
-        {session ? <button className="text-green-500 bg-black px-3 py-2 rounded-md" onClick={endSession}>[]</button> : <button className="text-red-500 bg-black px-3 py-2 rounded-md" onClick={startSession}>●</button>}
-        {isUserTalking ? <h1>User Talking</h1> : <h1>User Silent</h1>}
+        {isRecordingSession ? <h1>Recording</h1> : <h1>Not Recording</h1>}
         {botAwake ? <>
           {history.map(({ isUser, text }) => (
             <ChatMessage text={text} isUser={isUser} key={text} />
@@ -258,6 +270,43 @@ function App() {
     </div>
   );
 }
+
+function MicLevels({ micAmplitude, micThreshold, updateMicThreshold, isRecordingSession }) {
+  const maxAmplitude = 0.2; // for scaling
+
+  return (
+    <div className="w-full max-w-md mx-auto py-4 space-y-4">
+      <div className={`relative h-4 rounded-full overflow-hidden` + (isRecordingSession ? ' bg-green-500' : ' bg-gray-400')}>
+        
+        <div 
+          className={`absolute top-0 left-0 h-full transition-all duration-100 ease-out bg-blue-500`}
+          style={{ width: `${(micAmplitude / maxAmplitude) * 100}%` }}
+        ></div>
+        <div 
+          className="absolute top-0 h-full w-0.5 bg-white"
+          style={{ left: `${(micThreshold / maxAmplitude) * 100}%` }}
+        ></div>
+      </div>
+      
+      <div className="space-y-2">
+        <label htmlFor="threshold-slider" className="block text-sm font-medium text-gray-300">
+          Adjust Mic Sensitivity:
+        </label>
+        <input
+          type="range"
+          id="threshold-slider"
+          min={0}
+          max={maxAmplitude}
+          step={0.001}
+          value={micThreshold}
+          onChange={(e) => updateMicThreshold(Number(e.target.value))}
+          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+        />
+      </div>
+    </div>
+  );
+}
+
 
 function WakeupMessage() {
   const wakeupMessages = ["One second while I wake up...", "I'm coming online soon, I promise!", "I'm still not ready yet, but should be good to talk soon." , "Ooof this is awkward, give me a tiny bit more..."];
