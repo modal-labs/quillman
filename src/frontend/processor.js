@@ -10,14 +10,13 @@ class WorkletProcessor extends AudioWorkletProcessor {
     this.PAUSE_DURATION = PAUSE_DURATION;
     this.END_DURATION = END_DURATION;
 
-    this.talkingThreshold = 0.1; // initial value
+    this.talkingThreshold = 0.2; // initial value
 
     // State
     this._buffer = [];
     this._isTalking = false;
     this._isRecordingSession = false;
     this._silenceCounter = 0;
-    this.muted = true;
 
     // Add message event listener
     this.port.onmessage = this.handleMessage.bind(this);
@@ -26,24 +25,12 @@ class WorkletProcessor extends AudioWorkletProcessor {
   handleMessage(event) {
     if (event.data.type === 'updateThreshold') {
       this.talkingThreshold = event.data.value;
-      console.log('Updated talkingThreshold:', this.talkingThreshold);
-    }
-    // mute
-    if (event.data.type === 'mute') {
-      this.muted = true;
-      console.log('Muted');
-    }
-    if (event.data.type === 'unmute') {
-      this.muted = false;
-      console.log('Unmuted');
     }
   }
 
   process(inputs, outputs, parameters) {
     const input = inputs[0][0];
     if (!input) return true; // Early return if no input
-
-    if (this.muted) return true;
 
     const amplitude = this._calculateAmplitude(input);
     this.port.postMessage({ type: 'amplitude', value: amplitude });
@@ -82,7 +69,6 @@ class WorkletProcessor extends AudioWorkletProcessor {
 
     // end recording session if silence exceeds end duration. This triggers the bot to generate a response
     if (this._isRecordingSession && !this._isTalking && this._silenceCounter >= this.END_DURATION) {
-      console.log("Processor.js sending silence")
       this.port.postMessage({ type: 'silence' });
       this._isRecordingSession = false;
       this._buffer = [];

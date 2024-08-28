@@ -23,14 +23,6 @@ class RecorderNode extends AudioWorkletNode {
   updateThreshold(value) {
     this.port.postMessage({ type: 'updateThreshold', value });
   }
-
-  mute() {
-    this.port.postMessage({ type: 'mute' });
-  }
-
-  unmute() {
-    this.port.postMessage({ type: 'unmute' });
-  }
 }
 
 export default RecorderNode;
