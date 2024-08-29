@@ -58,13 +58,14 @@ function App() {
   const sendRef = useRef();
   const stateRef = useRef();
   const [chatHistory, setChatHistory] = useState([{
-    isUser: false,
-    text: "Hi! I'm a language model running on Modal. Talk to me using your microphone, and remember to turn your speaker volume up!"
+    role: "assistant",
+    content: "Hi! I'm a language model running on Modal. Talk to me using your microphone, and remember to turn your speaker volume up!"
   }]);
+  const chatHistoryRef = useRef(chatHistory);
   const playQueueRef = useRef([]);
   const isPlayingRef = useRef(false);
   const [micAmplitude, setMicAmplitude] = useState(0);
-  const [micThreshold, setMicThreshold] = useState(0.2);
+  const [micThreshold, setMicThreshold] = useState(0.1);
   const updateMicThreshold = (value) => {
     // update both in the recorder node and UI state
     stateRef.current.context.recorderNode.updateThreshold(value);
@@ -97,6 +98,11 @@ function App() {
       if (!stateRef.current.matches('RECORDING')) {
         return;
       }
+
+      // send chat history to server
+      const historyMessage = `{"type": "history", "value": ${JSON.stringify(chatHistoryRef.current)}}`;
+      stateRef.current.context.websocket.send(new TextEncoder().encode(historyMessage));        
+
       // will only transition to GENERATE state if in RECORDING state
       stateRef.current.context.websocket.send(new TextEncoder().encode(`{"type": "end"}`));
       sendRef.current("STOP_RECORDING");
@@ -166,22 +172,22 @@ function App() {
         console.log("Received bot reply:", data.value);
         setChatHistory(prevHistory => {
           let lastMessage = prevHistory[prevHistory.length - 1];
-          if (lastMessage.isUser) {
+          if (lastMessage.role === "user") {
             // this would be the first message from bot
-            return [...prevHistory, { isUser: false, text: data.value }];
+            return [...prevHistory, { role: "assistant", content: data.value }];
           } else {
             // append to most recent bot reply
             const updatedHistory = [...prevHistory];
             updatedHistory[updatedHistory.length - 1] = {
               ...lastMessage,
-              text: lastMessage.text + " " + data.value
+              content: lastMessage.content + "\n\n" + data.value
             };
             return updatedHistory;
           }
         });
       } else if (data.type === "transcript") {
         console.log("Received user transcript:", data.value);
-        setChatHistory(prevHistory => [...prevHistory, {isUser: true, text: data.value}]);
+        setChatHistory(prevHistory => [...prevHistory, {role: "user", content: data.value}]);
       }
     };
   }
@@ -200,9 +206,8 @@ function App() {
             source.connect(stateRef.current.context.audioContext.destination);
             source.onended = () => {
               isPlayingRef.current = false;
-              if (playQueueRef.current.length === 0) {
-                // if after playing audio, the queue is empty, we can assume we're done
-                // since TTS generation is faster than the real time playback
+              if (playQueueRef.current.length === 0 && stateRef.current.context.websocket.readyState === WebSocket.CLOSED) {
+                // if after playing audio, the queue is empty and websocket is closed by server, we can assume we're done
                 sendRef.current("GENERATION_COMPLETE");
                 return;
               }
@@ -216,9 +221,6 @@ function App() {
     }, 200);
     return () => clearInterval(intervalId);
   }, []);
-
-  
-
 
   const [state, send] = useMachine(voiceChatMachine, {
     actions: {
@@ -238,16 +240,16 @@ function App() {
       doSetup: async (context) => {
         console.log('Setting up services');
 
-        // Ensure warmup
-        await fetch(`https://${backendUrl}/prewarm`);
-
         // Setup audio if not already setup
         if (!context.recorderNode) {
           const { recorderNode, audioContext } = await setupAudio();
           context.audioContext = audioContext;
           context.recorderNode = recorderNode;
         }
-        
+
+        // Ensure warmup
+        await fetch(`https://${backendUrl}/prewarm`);
+
         // Create new websocket connection
         const socket = await openWebsocket(onWebsocketMessage);
         context.websocket = socket;
@@ -259,34 +261,40 @@ function App() {
 
   sendRef.current = send;
   stateRef.current = state;
+  chatHistoryRef.current = chatHistory;
 
   return (
     <div className="app absolute h-screen w-screen flex text-white">
-    <Sidebar stateRef={stateRef} micAmplitude={micAmplitude} micThreshold={micThreshold} updateMicThreshold={updateMicThreshold} />
-    <div className="bg-gray-700 w-5/6 flex flex-col items-center p-3 px-6">
-      <h1>Chat</h1>
-        {chatHistory.map(({ isUser, text }) => (
-          <ChatMessage text={text} isUser={isUser} key={text} />
-        ))}
-    </div>
+      <div className="flex flex-row w-full">
+        <div className="flex w-1/6">
+          <Sidebar stateRef={stateRef} micAmplitude={micAmplitude} micThreshold={micThreshold} updateMicThreshold={updateMicThreshold} />
+        </div>
+        <div className="w-5/6 flex flex-grow overflow-auto flex-col items-center p-3 px-6">
+          <h1>Chat</h1>
+            {chatHistory.map(({ role, content }) => (
+              <ChatMessage content={content} role={role} key={content} />
+            ))}
+           <div className="h-5/6 flex-shrink-0 bg-blue-200"></div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function ChatMessage({ text, isUser }) {
+function ChatMessage({ content, role }) {
   return (
     <div className="w-full">
-      <div className={`text-base gap-4 p-4 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-        <div className={`flex items-center gap-2 max-w-[600px] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+      <div className={`text-base p-4 flex ${role == "user" ? 'justify-end' : 'justify-start'}`}>
+        <div className="flex items-start gap-2 max-w-[600px] w-fit">
           <div
-            className={`flex items-center justify-center w-8 h-8 min-w-8 min-h-8 ${
-              isUser ? "fill-yellow-500" : "fill-primary"
+            className={`flex-shrink-0 flex items-center justify-center w-8 h-8 mt-1 ${
+              role == "user" ? "fill-yellow-500 order-last" : "fill-primary"
             }`}
           >
-            {isUser ? <UserIcon /> : <BotIcon />}
+            {role == "user" ? <UserIcon /> : <BotIcon />}
           </div>
-          <div className={`whitespace-pre-wrap rounded-[16px] px-3 py-1.5 bg-zinc-800 border ${isUser ? 'text-right' : 'text-left'}`}>
-            {text}
+          <div className="flex-grow whitespace-pre-wrap rounded-[16px] p-3 bg-zinc-800 border text-left">
+            {content}
           </div>
         </div>
       </div>
@@ -319,7 +327,7 @@ function Sidebar({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) {
   }, []);
   
   return (
-    <div className="bg-gray-900 w-1/6 flex flex-col items-center p-3">
+    <div className="bg-zinc-800 fixed w-1/6 top-0 bottom-0 flex flex-col items-center p-3">
       {/* sidebar */}
       <h1>Quillman</h1>
       <div className="flex flex-col gap-2 w-full">

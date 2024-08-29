@@ -7,7 +7,6 @@ from os import pipe
 from pathlib import Path
 from string import punctuation
 import modal
-import modal.container_process
 import time
 from .xtts import XTTS
 from .whisper import Whisper
@@ -93,6 +92,8 @@ def web():
         global pipeline_start_time
         pipeline_start_time= time.time()
 
+        history = []
+
         # Step 1: User streams their input in via WebSocket
         async def user_input_stream_gen():
             i = 0
@@ -105,8 +106,9 @@ def web():
                     break
                 elif msg["type"] == "history":
                     # we're receiving a history chunk
-                    history = msg["value"]
-                    timeprint("websocket.receive_bytes received history chunk", history)
+                    timeprint("websocket.receive_bytes received history chunk", msg)
+                    for history_entry in msg["value"]:
+                        history.append(history_entry)
                     continue
                 elif msg["type"] == "wav":
                     # first message is the json signal that we're receiving a wav
@@ -144,7 +146,7 @@ def web():
         }).encode())
 
         # We now have a single transcript to send to the LLM
-        llm_response_stream_gen = zephyr.generate.remote_gen(transcript)
+        llm_response_stream_gen = zephyr.generate.remote_gen(transcript, history)
         
         # llm_response_stream_gen will yield words, which we'll want to 
         # accumulate together into sentences for more natural-sounding TTS.

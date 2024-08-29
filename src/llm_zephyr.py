@@ -71,12 +71,10 @@ class Zephyr:
 
         t0 = time.time()
 
-        assert len(history) % 2 == 0, "History must be an even number of messages"
-
         messages = [{ "role": "system", "content": "" }]
-        for i in range(0, len(history), 2):
-            messages.append({ "role": "user", "content": history[i] })
-            messages.append({ "role": "user", "content": history[i+1] })
+        for message in history:
+            print("Adding history", message)
+            messages.append(message) # expects message format { "role": "user", "content": ... }
 
         messages.append({ "role": "user", "content": input })
         tokenized_chat = self.tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt").cuda()

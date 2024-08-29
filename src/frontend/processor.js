@@ -11,7 +11,7 @@ class WorkletProcessor extends AudioWorkletProcessor {
     this.END_DURATION = END_DURATION;
     this.isMuted = true;
 
-    this.talkingThreshold = 0.2; // initial value
+    this.talkingThreshold = 0.1; // initial value
 
     // State
     this._buffer = [];
@@ -38,10 +38,11 @@ class WorkletProcessor extends AudioWorkletProcessor {
   process(inputs, outputs, parameters) {
     const input = inputs[0][0];
     if (!input) return true; // Early return if no input
-    if (this.isMuted) return true;
 
     const amplitude = this._calculateAmplitude(input);
     this.port.postMessage({ type: 'amplitude', value: amplitude });
+
+    if (this.isMuted) return true;
     
     // every time user goes above threshold, we start recording
     // staying above that threshold maintains the recording state
