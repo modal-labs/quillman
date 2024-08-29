@@ -57,9 +57,19 @@ const voiceChatMachine = createMachine({
 function App() {
   const sendRef = useRef();
   const stateRef = useRef();
-  const [chatHistory, setChatHistory] = useState([]);
+  const [chatHistory, setChatHistory] = useState([{
+    isUser: false,
+    text: "Hi! I'm a language model running on Modal. Talk to me using your microphone, and remember to turn your speaker volume up!"
+  }]);
   const playQueueRef = useRef([]);
   const isPlayingRef = useRef(false);
+  const [micAmplitude, setMicAmplitude] = useState(0);
+  const [micThreshold, setMicThreshold] = useState(0.2);
+  const updateMicThreshold = (value) => {
+    // update both in the recorder node and UI state
+    stateRef.current.context.recorderNode.updateThreshold(value);
+    setMicThreshold(value);
+  };
 
   const setupAudio = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -92,13 +102,17 @@ function App() {
       sendRef.current("STOP_RECORDING");
     }
 
+    const onAmplitude = (amplitude) => {
+      setMicAmplitude(amplitude);
+    }
+
     await audioContext.audioWorklet.addModule("processor.js");
     const recorderNode = new RecorderNode(
       audioContext,
       onBufferReceived,
       onTalking,
       onSilence,
-      () => {},
+      onAmplitude,
     );
 
     source.connect(recorderNode);
@@ -132,13 +146,12 @@ function App() {
       return;
     }
 
-    console.log("onWebsocketMessage");
     if (event.data instanceof Blob){
       const arrayBuffer = await event.data.arrayBuffer();
 
       // if previous message told us we're expecting a raw wav, send to play queue
       if (stateRef.current.context.expectingRawWav) {
-        console.log("Pushing to play queue");
+        console.log("Received wav segment from server");
         playQueueRef.current.push(arrayBuffer);
         stateRef.current.context.expectingRawWav = false;
         return;
@@ -147,50 +160,54 @@ function App() {
       // else parse json
       const data = JSON.parse(new TextDecoder().decode(arrayBuffer));
       if (data.type === "wav") {
-        console.log("Expecting next message to be wav")
         stateRef.current.context.expectingRawWav = true;
         return;
       } else if (data.type === "text") {
-        console.log("Received text message");
-        setChatHistory(chatHistory => [...chatHistory, { isUser: false, text: data.value }]);
+        console.log("Received bot reply:", data.value);
+        setChatHistory(prevHistory => {
+          let lastMessage = prevHistory[prevHistory.length - 1];
+          if (lastMessage.isUser) {
+            // this would be the first message from bot
+            return [...prevHistory, { isUser: false, text: data.value }];
+          } else {
+            // append to most recent bot reply
+            const updatedHistory = [...prevHistory];
+            updatedHistory[updatedHistory.length - 1] = {
+              ...lastMessage,
+              text: lastMessage.text + " " + data.value
+            };
+            return updatedHistory;
+          }
+        });
       } else if (data.type === "transcript") {
-        console.log("Received transcript");
-        setChatHistory(chatHistory => [...chatHistory, {isUser: true, text: data.value}]);
+        console.log("Received user transcript:", data.value);
+        setChatHistory(prevHistory => [...prevHistory, {isUser: true, text: data.value}]);
       }
-    }
+    };
   }
 
   // Audio player always runs in the background during GENERATING state
   useEffect(() => {
     const intervalId = setInterval(async () => {
-      console.log(1);
-      if (stateRef.current.matches('GENERATING') && !isPlayingRef.current) {
-        console.log(2);
-        if (playQueueRef.current.length === 0) {
-          return;
-        }
-        console.log(3);
+      if (stateRef.current.matches('GENERATING') && !isPlayingRef.current && playQueueRef.current.length > 0) {
         isPlayingRef.current = true;
-        console.log(4);
         const arrayBuffer = playQueueRef.current.shift();
         if (arrayBuffer) {
           try {
-            console.log("Playing audio");
             const audioBuffer = await stateRef.current.context.audioContext.decodeAudioData(arrayBuffer);
             const source = stateRef.current.context.audioContext.createBufferSource();
             source.buffer = audioBuffer;
             source.connect(stateRef.current.context.audioContext.destination);
             source.onended = () => {
-              console.log("Play ended");
+              isPlayingRef.current = false;
               if (playQueueRef.current.length === 0) {
-                console.log("Done");
-                isPlayingRef.current = false;
+                // if after playing audio, the queue is empty, we can assume we're done
+                // since TTS generation is faster than the real time playback
                 sendRef.current("GENERATION_COMPLETE");
                 return;
               }
             };
             source.start();
-            isPlayingRef.current = false;
           } catch (error) {
             console.error("Error decoding audio data:", error);
           }
@@ -199,6 +216,8 @@ function App() {
     }, 200);
     return () => clearInterval(intervalId);
   }, []);
+
+  
 
 
   const [state, send] = useMachine(voiceChatMachine, {
@@ -210,12 +229,6 @@ function App() {
       muteMic: (context, event) => {
         console.log("Muting mic");
         context.recorderNode.mute();
-      },
-      handleSetupError: (context, event) => {
-        console.error('Setup error:', event.data);
-      },
-      handleResponse: (context, event) => {
-        console.log('Handling response:', event.data);
       },
       handleError: (context, event) => {
         console.error('Error occurred:', event.data);
@@ -248,18 +261,14 @@ function App() {
   stateRef.current = state;
 
   return (
-    <div>
-      <h1>Voice Chat App!</h1>
-      <p>Current State: {state.value}</p>
-      {state.value === 'SETUP' && <p>Setting up services...</p>}
-      {state.value === 'IDLE' && <p>Speak into mic</p>}
-      {state.value === 'RECORDING' && <p>Recording</p>}
-      {state.value === 'GENERATING' && <p>Generating response</p>}
-      <div className="text-white">
+    <div className="app absolute h-screen w-screen flex text-white">
+    <Sidebar stateRef={stateRef} micAmplitude={micAmplitude} micThreshold={micThreshold} updateMicThreshold={updateMicThreshold} />
+    <div className="bg-gray-700 w-5/6 flex flex-col items-center p-3 px-6">
+      <h1>Chat</h1>
         {chatHistory.map(({ isUser, text }) => (
           <ChatMessage text={text} isUser={isUser} key={text} />
         ))}
-      </div>
+    </div>
     </div>
   );
 }
@@ -280,6 +289,99 @@ function ChatMessage({ text, isUser }) {
             {text}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function Sidebar({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) {
+  const [whisperStatus, setWhisperStatus] = useState(false);
+  const [zephyrStatus, setZephyrStatus] = useState(false);
+  const [xttsStatus, setXttsStatus] = useState(false);
+  
+  // Backend status monitor that always runs in the background
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      try {
+        const response = await fetch(`https://${backendUrl}/status`);
+        if (!response.ok) {
+          throw new Error("Error occurred during status check: " + response.status);
+        }
+        const data = await response.json();
+        setWhisperStatus(data.whisper);
+        setZephyrStatus(data.zephyr);
+        setXttsStatus(data.xtts);
+      } catch (error) {
+        console.error(error);
+      }
+    }, 1000);
+    return () => clearInterval(intervalId);
+  }, []);
+  
+  return (
+    <div className="bg-gray-900 w-1/6 flex flex-col items-center p-3">
+      {/* sidebar */}
+      <h1>Quillman</h1>
+      <div className="flex flex-col gap-2 w-full">
+        <div className="flex justify-between items-center">
+          <h1>Whisper</h1>
+          <div className={`${whisperStatus ? 'text-green-500' : 'text-red-500'} text-2xl`}>
+            ●
+          </div>
+        </div>
+        <div className="flex justify-between items-center">
+          <h1>Zephyr LLM</h1>
+          <div className={`${zephyrStatus ? 'text-green-500' : 'text-red-500'} text-2xl`}>
+            ●
+          </div>
+        </div>
+        <div className="flex justify-between items-center">
+          <h1>XTTS</h1>
+          <div className={`${xttsStatus ? 'text-green-500' : 'text-red-500'} text-2xl`}>
+            ●
+          </div>
+        </div>
+        <div>
+          <MicLevels micAmplitude={micAmplitude} micThreshold={micThreshold} isRecordingState={stateRef.current.matches('RECORDING')} updateMicThreshold={updateMicThreshold} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MicLevels({ micAmplitude, micThreshold, isRecordingState, updateMicThreshold }) {
+  const maxAmplitude = 0.3; // for scaling
+
+  return (
+    <div className="w-full max-w-md mx-auto py-4 space-y-4">
+
+      <h1>Mic Settings</h1>
+      <label className="block text-sm font-medium text-gray-300">Audio Level</label>
+      <div className={`relative h-4 rounded-full overflow-hidden` + (isRecordingState ? ' bg-green-500' : ' bg-gray-400')}>
+        <div 
+          className={`absolute top-0 left-0 h-full transition-all duration-100 ease-out bg-blue-500`}
+          style={{ width: `${(micAmplitude / maxAmplitude) * 100}%` }}
+        ></div>
+        <div 
+          className="absolute top-0 h-full w-0.5 bg-white"
+          style={{ left: `${(micThreshold / maxAmplitude) * 100}%` }}
+        ></div>
+      </div>
+      
+      <div className="space-y-2">
+        <label htmlFor="threshold-slider" className="block text-sm font-medium text-gray-300">
+          Threshold:
+        </label>
+        <input
+          type="range"
+          id="threshold-slider"
+          min={0}
+          max={maxAmplitude}
+          step={0.001}
+          value={micThreshold}
+          onChange={(e) => updateMicThreshold(Number(e.target.value))}
+          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+        />
       </div>
     </div>
   );
