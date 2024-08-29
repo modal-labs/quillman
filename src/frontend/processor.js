@@ -9,6 +9,7 @@ class WorkletProcessor extends AudioWorkletProcessor {
     const processorOptions = options.processorOptions || {};
     this.PAUSE_DURATION = PAUSE_DURATION;
     this.END_DURATION = END_DURATION;
+    this.isMuted = true;
 
     this.talkingThreshold = 0.2; // initial value
 
@@ -26,11 +27,18 @@ class WorkletProcessor extends AudioWorkletProcessor {
     if (event.data.type === 'updateThreshold') {
       this.talkingThreshold = event.data.value;
     }
+    if (event.data.type === 'mute') {
+      this.isMuted = true;
+    }
+    if (event.data.type === 'unmute') {
+      this.isMuted = false;
+    }
   }
 
   process(inputs, outputs, parameters) {
     const input = inputs[0][0];
     if (!input) return true; // Early return if no input
+    if (this.isMuted) return true;
 
     const amplitude = this._calculateAmplitude(input);
     this.port.postMessage({ type: 'amplitude', value: amplitude });

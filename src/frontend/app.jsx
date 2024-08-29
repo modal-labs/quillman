@@ -1,6 +1,6 @@
-const { createMachine } = XState;
+const { createMachine, assign, spawn} = XState;
 const { useMachine } = XStateReact;
-const { useRef } = React;
+const { useRef, useEffect, useState } = React;
 import RecorderNode from "./recorder-node.js";
 import {float32ArrayToWav} from "./converter.js";
 
@@ -15,7 +15,7 @@ const voiceChatMachine = createMachine({
     websocket: null,
     recorderNode: null,
     audioContext: null,
-    chatHistory: [],
+    expectingRawWav: false,
   },
   states: {
     SETUP: {
@@ -25,10 +25,11 @@ const voiceChatMachine = createMachine({
       invoke: {
         src: 'doSetup',
         onDone: {
+          actions: ['unmuteMic'],
           target: 'IDLE',
         },
         onError: {
-          actions: ['handleSetupError']
+          actions: ['handleSetupError'] // todo: implement
         }
       }
     },
@@ -39,19 +40,15 @@ const voiceChatMachine = createMachine({
     },
     RECORDING: {
       on: {
-        STOP_RECORDING: 'GENERATING'
+        STOP_RECORDING: {
+          target: 'GENERATING',
+          actions: ['muteMic']
+        }
       }
     },
     GENERATING: {
-      invoke: {
-        src: 'doGeneration',
-        onDone: {
-          target: 'SETUP',
-        },
-        onError: {
-          target: 'SETUP',
-          actions: ['handleError']
-        }
+      on: {
+        GENERATION_COMPLETE: 'SETUP',
       }
     }
   }
@@ -60,6 +57,9 @@ const voiceChatMachine = createMachine({
 function App() {
   const sendRef = useRef();
   const stateRef = useRef();
+  const [chatHistory, setChatHistory] = useState([]);
+  const playQueueRef = useRef([]);
+  const isPlayingRef = useRef(false);
 
   const setupAudio = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -67,13 +67,14 @@ function App() {
     const source = audioContext.createMediaStreamSource(stream);
 
     const onBufferReceived = (buffer) => {
-      // only valid if in RECORDING state
-      console.log(stateRef.current.value);
       if (!stateRef.current.matches('RECORDING')) {
-        console.log("Buffer received while not recording, ignoring");
         return;
       }
-      console.log("Valid buffer received");
+
+      const wav_buffer = float32ArrayToWav(buffer, 48000);
+      stateRef.current.context.websocket.send(new TextEncoder().encode(`{"type": "wav"}`));
+      stateRef.current.context.websocket.send(wav_buffer);
+      console.log("Sent wav segment to server");
     }
 
     const onTalking = () => {
@@ -83,7 +84,11 @@ function App() {
     }
 
     const onSilence = () => {
+      if (!stateRef.current.matches('RECORDING')) {
+        return;
+      }
       // will only transition to GENERATE state if in RECORDING state
+      stateRef.current.context.websocket.send(new TextEncoder().encode(`{"type": "end"}`));
       sendRef.current("STOP_RECORDING");
     }
 
@@ -122,11 +127,90 @@ function App() {
   }
 
   const onWebsocketMessage = async (event) => {
+    // this should only ever happen in the generating state
+    if (!stateRef.current.matches('GENERATING')) {
+      return;
+    }
+
     console.log("onWebsocketMessage");
+    if (event.data instanceof Blob){
+      const arrayBuffer = await event.data.arrayBuffer();
+
+      // if previous message told us we're expecting a raw wav, send to play queue
+      if (stateRef.current.context.expectingRawWav) {
+        console.log("Pushing to play queue");
+        playQueueRef.current.push(arrayBuffer);
+        stateRef.current.context.expectingRawWav = false;
+        return;
+      }
+
+      // else parse json
+      const data = JSON.parse(new TextDecoder().decode(arrayBuffer));
+      if (data.type === "wav") {
+        console.log("Expecting next message to be wav")
+        stateRef.current.context.expectingRawWav = true;
+        return;
+      } else if (data.type === "text") {
+        console.log("Received text message");
+        setChatHistory(chatHistory => [...chatHistory, { isUser: false, text: data.value }]);
+      } else if (data.type === "transcript") {
+        console.log("Received transcript");
+        setChatHistory(chatHistory => [...chatHistory, {isUser: true, text: data.value}]);
+      }
+    }
   }
+
+  // Audio player always runs in the background during GENERATING state
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      console.log(1);
+      if (stateRef.current.matches('GENERATING') && !isPlayingRef.current) {
+        console.log(2);
+        if (playQueueRef.current.length === 0) {
+          return;
+        }
+        console.log(3);
+        isPlayingRef.current = true;
+        console.log(4);
+        const arrayBuffer = playQueueRef.current.shift();
+        if (arrayBuffer) {
+          try {
+            console.log("Playing audio");
+            const audioBuffer = await stateRef.current.context.audioContext.decodeAudioData(arrayBuffer);
+            const source = stateRef.current.context.audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(stateRef.current.context.audioContext.destination);
+            source.onended = () => {
+              console.log("Play ended");
+              if (playQueueRef.current.length === 0) {
+                console.log("Done");
+                isPlayingRef.current = false;
+                sendRef.current("GENERATION_COMPLETE");
+                return;
+              }
+            };
+            source.start();
+            isPlayingRef.current = false;
+          } catch (error) {
+            console.error("Error decoding audio data:", error);
+          }
+        }
+      }
+    }, 200);
+    return () => clearInterval(intervalId);
+  }, []);
+
 
   const [state, send] = useMachine(voiceChatMachine, {
     actions: {
+      unmuteMic: (context, event) => {
+        console.log("Unmuting mic");
+        context.recorderNode.unmute();
+      },
+      muteMic: (context, event) => {
+        console.log("Muting mic");
+        context.recorderNode.mute();
+      },
       handleSetupError: (context, event) => {
         console.error('Setup error:', event.data);
       },
@@ -142,7 +226,7 @@ function App() {
         console.log('Setting up services');
 
         // Ensure warmup
-        // await fetch(`https://${backendUrl}/prewarm`);
+        await fetch(`https://${backendUrl}/prewarm`);
 
         // Setup audio if not already setup
         if (!context.recorderNode) {
@@ -157,19 +241,6 @@ function App() {
 
         return Promise.resolve(context);
       },
-
-      doGeneration: async (context) => {
-        console.log('Generating response');
-
-        // await 10s
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        // append to history
-        context.chatHistory.push({isUser: false, text: "Hello, how are you?"});
-
-        // Implement response generation logic here
-        return Promise.resolve(context);
-      }
     }
   });
 
@@ -178,14 +249,14 @@ function App() {
 
   return (
     <div>
-      <h1>Voice Chat App</h1>
+      <h1>Voice Chat App!</h1>
       <p>Current State: {state.value}</p>
       {state.value === 'SETUP' && <p>Setting up services...</p>}
       {state.value === 'IDLE' && <p>Speak into mic</p>}
       {state.value === 'RECORDING' && <p>Recording</p>}
       {state.value === 'GENERATING' && <p>Generating response</p>}
       <div className="text-white">
-        {state.context.chatHistory.map(({ isUser, text }) => (
+        {chatHistory.map(({ isUser, text }) => (
           <ChatMessage text={text} isUser={isUser} key={text} />
         ))}
       </div>
