@@ -274,7 +274,8 @@ function App() {
             {chatHistory.map(({ role, content }) => (
               <ChatMessage content={content} role={role} key={content} />
             ))}
-           <div className="h-5/6 flex-shrink-0 bg-blue-200"></div>
+            <UserHint state={stateRef.current} />
+            <div className="h-5/6 flex-shrink-0"></div>
         </div>
       </div>
     </div>
@@ -301,6 +302,50 @@ function ChatMessage({ content, role }) {
     </div>
   );
 }
+
+function UserHint({ state }) {
+  const [firstSetup, setFirstSetup] = useState(true);
+
+  useEffect(() => {
+    if (state.matches('IDLE') && firstSetup) {
+      setFirstSetup(false);
+    }
+  }, [state, firstSetup]);
+
+  if (state.matches('SETUP') && !firstSetup) {
+    return null;
+  }
+
+  if (state.matches("GENERATING")) {
+    return null;
+  }
+
+  let hintText = "";
+  if (state.matches('SETUP') && firstSetup) {
+    hintText = "Waking up models...";
+  } else if (state.matches('IDLE')) {
+    hintText = "Ready to talk!";
+  } else if (state.matches('RECORDING')) {
+    hintText = "Listening";
+  }
+
+  if (!hintText) {
+    return null;
+  }
+
+  return (
+    <div className="w-full">
+      <div className={`text-base p-4 flex justify-center`}>
+        <div className="flex items-start gap-2 max-w-[600px] w-fit">
+          <div className="flex-grow whitespace-pre-wrap rounded-[16px] p-3 bg-zinc-800/50 text-left pulse">
+            {hintText}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function Sidebar({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) {
   const [whisperStatus, setWhisperStatus] = useState(false);
@@ -329,29 +374,30 @@ function Sidebar({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) {
   return (
     <div className="bg-zinc-800 fixed w-1/6 top-0 bottom-0 flex flex-col items-center p-3">
       {/* sidebar */}
-      <h1>Quillman</h1>
-      <div className="flex flex-col gap-2 w-full">
+      <h1 className="text-3xl">Quillman</h1>
+      <div className="flex flex-col gap-2 w-full mt-8">
+        <h2 className="text-xl">Service Status</h2>
         <div className="flex justify-between items-center">
-          <h1>Whisper</h1>
-          <div className={`${whisperStatus ? 'text-green-500' : 'text-red-500'} text-2xl`}>
+          <p>Whisper</p>
+          <div className={`${whisperStatus ? 'text-green-500' : 'text-red-500'} text-l`}>
             ●
           </div>
         </div>
         <div className="flex justify-between items-center">
-          <h1>Zephyr LLM</h1>
-          <div className={`${zephyrStatus ? 'text-green-500' : 'text-red-500'} text-2xl`}>
+          <p>Zephyr LLM</p>
+          <div className={`${zephyrStatus ? 'text-green-500' : 'text-red-500'} text-l`}>
             ●
           </div>
         </div>
         <div className="flex justify-between items-center">
-          <h1>XTTS</h1>
-          <div className={`${xttsStatus ? 'text-green-500' : 'text-red-500'} text-2xl`}>
+          <p>XTTS</p>
+          <div className={`${xttsStatus ? 'text-green-500' : 'text-red-500'} text-l`}>
             ●
           </div>
         </div>
-        <div>
-          <MicLevels micAmplitude={micAmplitude} micThreshold={micThreshold} isRecordingState={stateRef.current.matches('RECORDING')} updateMicThreshold={updateMicThreshold} />
-        </div>
+      </div>
+      <div className="mt-8 w-full">
+        <MicLevels micAmplitude={micAmplitude} micThreshold={micThreshold} isRecordingState={stateRef.current.matches('RECORDING')} updateMicThreshold={updateMicThreshold} />
       </div>
     </div>
   );
@@ -361,13 +407,12 @@ function MicLevels({ micAmplitude, micThreshold, isRecordingState, updateMicThre
   const maxAmplitude = 0.3; // for scaling
 
   return (
-    <div className="w-full max-w-md mx-auto py-4 space-y-4">
-
-      <h1>Mic Settings</h1>
-      <label className="block text-sm font-medium text-gray-300">Audio Level</label>
+    <div className="w-full max-w-md mx-auto space-y-2">
+      <h1  className="text-xl">Mic Settings</h1>
+      <label className="block text-sm font-medium text-gray-300">Mic Level</label>
       <div className={`relative h-4 rounded-full overflow-hidden` + (isRecordingState ? ' bg-green-500' : ' bg-gray-400')}>
         <div 
-          className={`absolute top-0 left-0 h-full transition-all duration-100 ease-out bg-blue-500`}
+          className={`absolute top-0 left-0 h-full transition-all duration-100 ease-out bg-gray-200`}
           style={{ width: `${(micAmplitude / maxAmplitude) * 100}%` }}
         ></div>
         <div 
