@@ -75,7 +75,7 @@ class XTTS:
         )
         print(f"TTS completed in {time.time() - t0:.2f}s")
 
-        # # return wav as a file object
+        # return wav as a file object
         return text, wav_file
 
 

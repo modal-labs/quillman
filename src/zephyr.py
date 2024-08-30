@@ -9,7 +9,6 @@ from pathlib import Path
 
 import modal
 
-# from .common import app
 from .common import app
 
 MODEL_NAME = "TheBloke/zephyr-7B-beta-AWQ"
