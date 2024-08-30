@@ -14,8 +14,9 @@ which you may find at https://coqui.ai/cpml
 
 import io
 import modal
+import time
 
-from .common_proto import app
+from .common import app
 
 tts_image = (
     modal.Image.debian_slim(python_version="3.11.9")
@@ -63,7 +64,7 @@ class XTTS:
         """
         Runs xtts-v2 on a given text.
         """
-
+        t0 = time.time()
         # Save into an in-memory wav file
         wav_file = io.BytesIO()
         self.model.tts_to_file(
@@ -72,16 +73,20 @@ class XTTS:
                 speaker=speaker,
                 language=language,
         )
+        print(f"TTS completed in {time.time() - t0:.2f}s")
 
         # # return wav as a file object
         return text, wav_file
 
 
+# For local testing, run `modal run -q src.xtts --text "Hello, how are you doing on this fine day?"`
 @app.local_entrypoint()
-def tts_entrypoint(text: str):
+def tts_entrypoint(text: str = "Hello, how are you doing on this fine day?"):
     tts = XTTS()
 
     text, wav = tts.speak.remote(text)
     print(text)
-    with open(f"output.wav", "wb") as f:
+    with open(f"/tmp/output_xtts.wav", "wb") as f:
         f.write(wav.getvalue())
+
+    print("Done, output audio saved to /tmp/output_xtts.wav")

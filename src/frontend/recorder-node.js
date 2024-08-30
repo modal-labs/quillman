@@ -7,10 +7,10 @@ class RecorderNode extends AudioWorkletNode {
         case 'buffer': // buffers are sent on brief pauses
           onBufferReceived(event.data.buffer);
           break;
-        case 'talking': // on user talking
+        case 'talking':
           onTalking();
           break;
-        case 'silence': // on prolonged silence
+        case 'silence':
           onSilence();
           break;
         case 'amplitude':
@@ -27,7 +27,7 @@ class RecorderNode extends AudioWorkletNode {
   mute() {
     this.port.postMessage({ type: 'mute' });
   }
-  
+
   unmute() {
     this.port.postMessage({ type: 'unmute' });
   }

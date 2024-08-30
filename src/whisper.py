@@ -4,7 +4,7 @@ Speech-to-text transcriptiong service based on OpenAI Whisper V3 large.
 
 import time
 import modal
-from .common_proto import app
+from .common import app
 
 cuda_version = "12.4.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
@@ -77,6 +77,7 @@ class Whisper:
         return result["text"]
 
 
+# For local testing, run `modal run -q src.whisper
 @app.local_entrypoint()
 def test_whisper():
     import os
@@ -84,10 +85,10 @@ def test_whisper():
     whisper = Whisper()
 
     # We have three sample audio files in the test-audio folder that we'll transcribe
-    files = os.listdir("test-audio")
+    files = os.listdir("tests/test-audio")
     files.sort()
     for file in files:
-        file = "test-audio" / Path(file)
+        file = "tests/test-audio" / Path(file)
         with open(file, "rb") as f:
             audio_data = f.read()
         result = whisper.transcribe.remote(audio_data)

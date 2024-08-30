@@ -10,10 +10,9 @@ from pathlib import Path
 import modal
 
 # from .common import app
-from .common_proto import app
+from .common import app
 
 MODEL_NAME = "TheBloke/zephyr-7B-beta-AWQ"
-
 
 zephyr_image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -23,12 +22,10 @@ zephyr_image = (
     )
 )
 
-
 with zephyr_image.imports():
     from threading import Thread
     from transformers import AutoTokenizer, TextIteratorStreamer
     from awq import AutoAWQForCausalLM
-
 
 @app.cls(
     image=zephyr_image, 
@@ -51,9 +48,7 @@ class Zephyr:
     def load_model(self):
         t0 = time.time()
         print("Loading AWQ quantized model...")
-
         self.model = AutoAWQForCausalLM.from_quantized(MODEL_NAME, fuse_layers=False, version="GEMV")
-
         print(f"Model loaded in {time.time() - t0:.2f}s")
 
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -70,11 +65,11 @@ class Zephyr:
             return
 
         t0 = time.time()
-
         messages = [{ "role": "system", "content": "" }]
         for message in history:
             print("Adding history", message)
-            messages.append(message) # expects message format { "role": "user", "content": ... }
+            # We expect message in openAI history format { "role": "user", "content": ... }
+            messages.append(message)
 
         messages.append({ "role": "user", "content": input })
         tokenized_chat = self.tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt").cuda()
@@ -102,9 +97,9 @@ class Zephyr:
         print(f"Output generated in {time.time() - t0:.2f}s")
 
 
-# For local testing, run `modal run -q src.llm_zephyr --input "Where is the best sushi in New York?"`
+# For local testing, run `modal run -q src.zephyr --text "Where is the best sushi in New York?"`
 @app.local_entrypoint()
-def zephyr_entrypoint(input: str):
+def zephyr_entrypoint(text: str = "Where is the best sushi in New York?"):
     model = Zephyr()
-    for val in model.generate.remote_gen(input):
-        print(val, end="", flush=True)
+    for val in model.generate.remote_gen(text):
+        print(val, end=" ", flush=True)

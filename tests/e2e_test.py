@@ -1,10 +1,24 @@
+"""
+This file is a test script for end-to-end testing the generation pipeline, 
+mimicking the actions a user would take on the frontend.
+
+It is intended to call to a dev endpoint, set up through `modal serve src.app`.
+"""
+
 import time
 import asyncio
 import websockets
 import os
+from os import path
 import requests
 
-endpoint = "erik-dunteman--quillman-proto-web-dev.modal.run"
+# look up user's active modal profile to get serve endpoint
+import toml
+with open(path.join(path.expanduser("~"), ".modal.toml")) as f:
+    current = toml.load(f)
+    for name, item in current.items():
+        if item.get("active", False):
+            endpoint = f"{name}--quillman-web-dev.modal.run"
 
 import os
 import json
@@ -96,13 +110,15 @@ async def main():
                     if i == 0:
                         print(f"Time since end of user speech to FIRST TTS CHUNK: {time.time() - user_finish_time}s")
 
-                    with open(f"output_{i}.wav", "wb") as f:
+                    with open(f"/tmp/output_{i}.wav", "wb") as f:
                         f.write(wav_response)
 
                 i += 1
 
     except websockets.exceptions.WebSocketException as e:
         pass
+
+    print("Done, output audios saved to /tmp/audio_{i}.wav")
 
 if __name__ == "__main__":
     asyncio.run(main())

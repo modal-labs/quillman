@@ -2,119 +2,181 @@
 Main web application service. Serves the static frontend as well as
 API routes for transcription, language model generation and text-to-speech.
 """
-
-import json
 from pathlib import Path
-
-from modal import Mount, asgi_app
+import modal
+from .xtts import XTTS
+from .whisper import Whisper
+from .zephyr import Zephyr
 
 from .common import app
-from .llm_zephyr import Zephyr
-from .whisper import Whisper
-from .tts import Tortoise
 
 static_path = Path(__file__).with_name("frontend").resolve()
 
-PUNCTUATION = [".", "?", "!", ":", ";", "*"]
-
-
-
 @app.function(
-    mounts=[Mount.from_local_dir(static_path, remote_path="/assets")],
-    container_idle_timeout=300,
+    mounts=[modal.Mount.from_local_dir(static_path, remote_path="/assets")],
+    container_idle_timeout=600,
     timeout=600,
 )
-@asgi_app()
+@modal.asgi_app()
 def web():
-    from fastapi import FastAPI, Request
-    from fastapi.responses import Response, StreamingResponse
+    from fastapi import FastAPI, Response, WebSocket
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import Response
     from fastapi.staticfiles import StaticFiles
+    import fastapi
 
+    import numpy as np
+    import json
+    
     web_app = FastAPI()
-    transcriber = Whisper()
-    llm = Zephyr()
-    tts = Tortoise()
 
-    @web_app.post("/transcribe")
-    async def transcribe(request: Request):
-        bytes = await request.body()
-        result = transcriber.transcribe_segment.remote(bytes)
-        return result["text"]
+    web_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-    @web_app.post("/generate")
-    async def generate(request: Request):
-        body = await request.json()
-        tts_enabled = body["tts"]
+    # Instantiate the inference modules
+    whisper = Whisper()
+    zephyr = Zephyr()
+    xtts = XTTS()
 
-        if "noop" in body:
-            llm.generate.spawn("")
-            # Warm up 3 containers for now.
-            if tts_enabled:
-                for _ in range(3):
-                    tts.speak.spawn("")
-            return
+    @web_app.get("/status")
+    async def status():
+        '''Return the status of each inference module, to provide feedback to the user about the app's readiness.'''
+        whisper_stats = whisper.prewarm.get_current_stats()
+        zephyr_stats = zephyr.prewarm.get_current_stats()
+        xtts_stats = xtts.prewarm.get_current_stats()
+        return {
+            "whisper": whisper_stats.num_total_runners > 0 and whisper_stats.backlog == 0,
+            "zephyr": zephyr_stats.num_total_runners > 0 and zephyr_stats.backlog == 0,
+            "xtts": xtts_stats.num_total_runners > 0 and xtts_stats.backlog == 0,
+        }
 
-        def speak(sentence):
-            if tts_enabled:
-                fc = tts.speak.spawn(sentence)
-                return {
-                    "type": "audio",
-                    "value": fc.object_id,
-                }
-            else:
-                return {
-                    "type": "sentence",
-                    "value": sentence,
-                }
+    @web_app.get("/prewarm")
+    async def prewarm():
+        '''Prewarm the inference modules, to ensure they're ready to receive requests.'''
+        prewarm_futures = [
+            whisper.prewarm.spawn(),
+            zephyr.prewarm.spawn(),
+            xtts.prewarm.spawn(),
+        ]
+        for i in prewarm_futures:
+            i.get()
 
-        def gen():
-            sentence = ""
+        return Response(status_code=200)
 
-            for segment in llm.generate.remote_gen(body["input"], body["history"]):
-                yield {"type": "text", "value": segment}
-                sentence += segment
+    @web_app.websocket("/pipeline")
+    async def websocket_endpoint(websocket: WebSocket):
+        '''A websocket endpoint to generate a single response from a user's input. 
 
-                for p in PUNCTUATION:
-                    if p in sentence:
-                        prev_sentence, new_sentence = sentence.rsplit(p, 1)
-                        yield speak(prev_sentence)
-                        sentence = new_sentence
+        Receive Stages:
+        1: User streams their input in via WebSocket. Transcription begins immediately. Multiple transcription chunks may be sent in.
+            recv: { "type": "wav" } -> Tells the server that the next message will be the raw wav bytes.
+        2: User optionally sends in a history of previous messages from the chat session.
+            recv: { "type": "history", "value": <history> } -> <history> is a list of OpenAI format chat message history
+        3: User sends in the end signal. LLM response generation begins once all transcription chunks are complete.
+            recv: { "type": "end" }
 
-            if sentence:
-                yield speak(sentence)
+        Response Stages:
+        4: LLM response generation yields completed sentences. Each sentence is sent to TTS.
+        5: TTS yields a sentence at a time. Each sentence is sent back to the client.
+            send: { "type": "text", "value": <text> } -> <text> is a text sentence from the LLM
+            send: { "type": "wav" } -> Tells the client that the next message will be the raw wav bytes.
+        6: Once all TTS chunks are sent, the websocket is closed.
+        '''
+        await websocket.accept()
+        
+        history = []
 
-        def gen_serialized():
-            for i in gen():
-                yield json.dumps(i) + "\x1e"
+        # Receive message stream from client
+        async def user_input_stream_gen():
+            i = 0
+            while True:
+                msg_bytes = await websocket.receive_bytes()
+                msg = json.loads(msg_bytes.decode())
+                if msg["type"] == "end":
+                    # Request stage complete
+                    break
+                elif msg["type"] == "history":
+                    # we're receiving a history chunk
+                    for history_entry in msg["value"]:
+                        history.append(history_entry)
+                    continue
+                elif msg["type"] == "wav":
+                    # Since it's easier to send wav bytes as an individual message, 
+                    # this json signal tells us the next message will be the wav bytes.
+                    # Read those bytes and yield them to the transcription.
+                    wav_bytes = await websocket.receive_bytes()
+                    i += 1
+                    yield wav_bytes
+                else:
+                    print(f"websocket.receive_bytes received unknown message type: {msg['type']}")
+                    continue
 
-        return StreamingResponse(
-            gen_serialized(),
-            media_type="text/event-stream",
-        )
+        # Transcribe user input wavs the moment they become available
+        transcribe_futures = []
+        async for chunk in user_input_stream_gen():
+            transcribe_futures.append(whisper.transcribe.spawn(chunk))
+        
+        # Await all transcription chunks, since reponse generation 
+        # requires the full transcript before it can begin
+        transcript_chunks = []
+        for id in transcribe_futures:
+            transcript_chunk = id.get()
+            transcript_chunks.append(transcript_chunk)
 
-    @web_app.get("/audio/{call_id}")
-    async def get_audio(call_id: str):
-        from modal.functions import FunctionCall
+        # Send the completed transcript back to the client
+        transcript = " ".join(transcript_chunks)
+        await websocket.send_bytes(json.dumps({
+            "type": "transcript", 
+            "value": transcript
+        }).encode())
 
-        function_call = FunctionCall.from_id(call_id)
-        print("Getting audio for", call_id)
-        try:
-            result = function_call.get(timeout=30)
-        except TimeoutError:
-            return Response(status_code=202)
+        # Send the transcript to the LLM
+        llm_response_stream_gen = zephyr.generate.remote_gen(transcript, history)
 
-        if result is None:
-            return Response(status_code=204)
+        # Accumulate the LLM response stream into sentences
+        # for more natural-sounding TTS.
+        punctuation = [".", "?", "!", ":", ";", "*"]
+        def tts_input_stream_acccumulator(text_stream):
+            current_chunk = ""
+            for word in text_stream:
+                current_chunk += word + " "
+                for p in punctuation:
+                    if p in word:
+                        # yields sentences to TTS
+                        yield current_chunk
+                        current_chunk = ""
+                        break
+            # send last chunk
+            if current_chunk != "":
+                yield current_chunk
 
-        return StreamingResponse(result, media_type="audio/wav")
+        tts_input_stream_gen = tts_input_stream_acccumulator(llm_response_stream_gen)
 
-    @web_app.delete("/audio/{call_id}")
-    async def cancel_audio(call_id: str):
-        from modal.functions import FunctionCall
+        # Stream the sentences from the accumulator into the TTS service
+        tts_output_stream_gen = xtts.speak.map(tts_input_stream_gen)
 
-        print("Cancelling", call_id)
-        function_call = FunctionCall.from_id(call_id)
-        function_call.cancel()
+        # Stream the TTS output back to the client
+        async for text, wav_bytesio in tts_output_stream_gen:
+            # Send the text string to the client for the chat UI to display
+            await websocket.send_bytes(json.dumps({
+                "type": "text", 
+                "value": text
+            }).encode())
 
+            # Send the wav in two messages: first the json signal, then the actual bytes
+            await websocket.send_bytes(json.dumps({
+                "type": "wav"
+            }).encode())
+            await websocket.send_bytes(wav_bytesio.getvalue())
+
+        # All done! Close the websocket.
+        await websocket.close()
+        
+    # Serve static files, for the frontend
     web_app.mount("/", StaticFiles(directory="/assets", html=True))
     return web_app

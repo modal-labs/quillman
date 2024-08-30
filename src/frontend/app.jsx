@@ -4,10 +4,6 @@ const { useRef, useEffect, useState } = React;
 import RecorderNode from "./recorder-node.js";
 import {float32ArrayToWav} from "./converter.js";
 
-// const backendUrl = "https://erik-dunteman--quillman-proto-web-dev.modal.run";
-const backendUrl = "erik-dunteman--quillman-proto-web.modal.run";
-
-
 const voiceChatMachine = createMachine({
   id: 'voiceChat',
   initial: 'SETUP',
@@ -28,9 +24,6 @@ const voiceChatMachine = createMachine({
           actions: ['unmuteMic'],
           target: 'IDLE',
         },
-        onError: {
-          actions: ['handleSetupError'] // todo: implement
-        }
       }
     },
     IDLE: {
@@ -129,7 +122,7 @@ function App() {
 
   const openWebsocket = async (onWebsocketMessage) => {
     return new Promise((resolve, reject) => {
-      const socket = new WebSocket(`wss://${backendUrl}/pipeline`);
+      const socket = new WebSocket(`/pipeline`);
       socket.onopen = () => {
         console.log('WebSocket connection established');
         resolve(socket);
@@ -248,7 +241,7 @@ function App() {
         }
 
         // Ensure warmup
-        await fetch(`https://${backendUrl}/prewarm`);
+        await fetch(`/prewarm`);
 
         // Create new websocket connection
         const socket = await openWebsocket(onWebsocketMessage);
@@ -270,7 +263,7 @@ function App() {
           <Sidebar stateRef={stateRef} micAmplitude={micAmplitude} micThreshold={micThreshold} updateMicThreshold={updateMicThreshold} />
         </div>
         <div className="w-5/6 flex flex-grow overflow-auto flex-col items-center p-3 px-6">
-          <h1>Chat</h1>
+          <h1 className="text-2xl">Chat</h1>
             {chatHistory.map(({ role, content }) => (
               <ChatMessage content={content} role={role} key={content} />
             ))}
@@ -335,9 +328,9 @@ function UserHint({ state }) {
 
   return (
     <div className="w-full">
-      <div className={`text-base p-4 flex justify-center`}>
+      <div className={`text-md p-4 flex justify-center`}>
         <div className="flex items-start gap-2 max-w-[600px] w-fit">
-          <div className="flex-grow whitespace-pre-wrap rounded-[16px] p-3 bg-zinc-800/50 text-left pulse">
+          <div className="flex-grow whitespace-pre-wrap rounded-[16px] p-3 bg-zinc-800/50 pulse">
             {hintText}
           </div>
         </div>
@@ -356,7 +349,7 @@ function Sidebar({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) {
   useEffect(() => {
     const intervalId = setInterval(async () => {
       try {
-        const response = await fetch(`https://${backendUrl}/status`);
+        const response = await fetch(`/status`);
         if (!response.ok) {
           throw new Error("Error occurred during status check: " + response.status);
         }
@@ -372,26 +365,26 @@ function Sidebar({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) {
   }, []);
   
   return (
-    <div className="bg-zinc-800 fixed w-1/6 top-0 bottom-0 flex flex-col items-center p-3">
+    <div className="bg-zinc-800 fixed w-1/6 top-0 bottom-0 flex flex-col items-center p-4">
       {/* sidebar */}
-      <h1 className="text-3xl">Quillman</h1>
-      <div className="flex flex-col gap-2 w-full mt-8">
+      <h1 className="text-3xl">QuiLLMan</h1>
+      <div className="flex flex-col gap-2 w-full mt-8 text-md">
         <h2 className="text-xl">Service Status</h2>
         <div className="flex justify-between items-center">
           <p>Whisper</p>
-          <div className={`${whisperStatus ? 'text-green-500' : 'text-red-500'} text-l`}>
+          <div className={`${whisperStatus ? 'text-primary' : 'text-red-500'}`}>
             ●
           </div>
         </div>
         <div className="flex justify-between items-center">
           <p>Zephyr LLM</p>
-          <div className={`${zephyrStatus ? 'text-green-500' : 'text-red-500'} text-l`}>
+          <div className={`${zephyrStatus ? 'text-primary' : 'text-red-500'}`}>
             ●
           </div>
         </div>
         <div className="flex justify-between items-center">
           <p>XTTS</p>
-          <div className={`${xttsStatus ? 'text-green-500' : 'text-red-500'} text-l`}>
+          <div className={`${xttsStatus ? 'text-primary' : 'text-red-500'}`}>
             ●
           </div>
         </div>
@@ -399,6 +392,19 @@ function Sidebar({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) {
       <div className="mt-8 w-full">
         <MicLevels micAmplitude={micAmplitude} micThreshold={micThreshold} isRecordingState={stateRef.current.matches('RECORDING')} updateMicThreshold={updateMicThreshold} />
       </div>
+      <a
+        className="items-center flex justify-center mt-auto"
+        href="https://modal.com"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <footer className="flex flex-row items-center w-42 p-1 mb-6 rounded border">
+          <span className="p-1 text-md">
+            <strong>built with</strong>
+          </span>
+          <img className="h-12 w-24" src="./modal-logo.svg"></img>
+        </footer>
+      </a>
     </div>
   );
 }
@@ -410,9 +416,9 @@ function MicLevels({ micAmplitude, micThreshold, isRecordingState, updateMicThre
     <div className="w-full max-w-md mx-auto space-y-2">
       <h1  className="text-xl">Mic Settings</h1>
       <label className="block text-sm font-medium text-gray-300">Mic Level</label>
-      <div className={`relative h-4 rounded-full overflow-hidden` + (isRecordingState ? ' bg-green-500' : ' bg-gray-400')}>
+      <div className={`relative h-4 rounded-full overflow-hidden` + (isRecordingState ? ' bg-primary' : ' bg-zinc-600')}>
         <div 
-          className={`absolute top-0 left-0 h-full transition-all duration-100 ease-out bg-gray-200`}
+          className={`absolute top-0 left-0 h-full transition-all duration-100 ease-out bg-zinc-200`}
           style={{ width: `${(micAmplitude / maxAmplitude) * 100}%` }}
         ></div>
         <div 
@@ -433,7 +439,7 @@ function MicLevels({ micAmplitude, micThreshold, isRecordingState, updateMicThre
           step={0.001}
           value={micThreshold}
           onChange={(e) => updateMicThreshold(Number(e.target.value))}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+          className="w-full h-2 bg-zinc-600 rounded-lg appearance-none cursor-pointer"
         />
       </div>
     </div>
