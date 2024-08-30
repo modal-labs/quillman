@@ -271,11 +271,11 @@ const App = () => {
 
   return (
     <div className="app absolute h-screen w-screen flex text-white">
-      <div className="flex flex-row w-full">
-        <div className="flex w-1/6">
+      <div className="flex w-full">
+        <div className="w-1/6">
           <Sidebar stateRef={stateRef} micAmplitude={micAmplitude} micThreshold={micThreshold} updateMicThreshold={updateMicThreshold} />
         </div>
-        <div className="w-5/6 flex flex-grow overflow-auto flex-col items-center p-3 px-6">
+        <div className="w-5/6 flex-grow overflow-auto flex-col items-center p-3 px-6">
           <h1 className="text-2xl">Chat</h1>
             {chatHistory.map(({ role, content }) => (
               <ChatMessage content={content} role={role} key={content} />
@@ -341,7 +341,7 @@ const UserHint = ({ state }) => {
 
   return (
     <div className="w-full">
-      <div className={`text-md p-4 flex justify-center`}>
+      <div className="text-md p-4 flex justify-center">
         <div className="flex items-start gap-2 max-w-[600px] w-fit">
           <div className="flex-grow whitespace-pre-wrap rounded-[16px] p-3 bg-zinc-800/50 pulse">
             {hintText}
@@ -351,7 +351,6 @@ const UserHint = ({ state }) => {
     </div>
   );
 }
-
 
 const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) => {
   const [whisperStatus, setWhisperStatus] = useState(false);
@@ -379,7 +378,6 @@ const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) =
   
   return (
     <div className="bg-zinc-800 fixed w-1/6 top-0 bottom-0 flex flex-col items-center p-4">
-      {/* sidebar */}
       <h1 className="text-3xl">QuiLLMan</h1>
       <div className="flex flex-col gap-2 w-full mt-8 text-md">
         <h2 className="text-xl">Service Status</h2>
@@ -411,11 +409,11 @@ const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) =
         target="_blank"
         rel="noopener noreferrer"
       >
-        <footer className="flex flex-row items-center w-42 p-1 mb-6 rounded border">
+        <footer className="flex items-center w-42 p-1 mb-6 rounded border">
           <span className="p-1 text-md">
             <strong>built with</strong>
           </span>
-          <img className="h-12 w-24" src="./modal-logo.svg"></img>
+          <img className="h-12 w-24" src="./modal-logo.svg" alt="Modal logo" />
         </footer>
       </a>
     </div>
