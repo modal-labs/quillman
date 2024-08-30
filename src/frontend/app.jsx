@@ -1,9 +1,14 @@
-const { createMachine, assign, spawn} = XState;
+const { createMachine} = XState;
 const { useMachine } = XStateReact;
 const { useRef, useEffect, useState } = React;
 import RecorderNode from "./recorder-node.js";
 import {float32ArrayToWav} from "./converter.js";
 
+// We use XState to manage the state of the app, transitioning between states:
+// - SETUP: warming up models, setting up audio context, etc.
+// - IDLE: waiting for user to speak loud enough to trigger the recording
+// - RECORDING: recording audio until user has been silent for a certain amount of time. Audio begins streaming to the server.
+// - GENERATING: /pipeline GENERATINGs a response and streams it back to the client.
 const voiceChatMachine = createMachine({
   id: 'voiceChat',
   initial: 'SETUP',
@@ -47,24 +52,28 @@ const voiceChatMachine = createMachine({
   }
 });
 
-function App() {
-  const sendRef = useRef();
-  const stateRef = useRef();
+const App = () => {
   const [chatHistory, setChatHistory] = useState([{
     role: "assistant",
     content: "Hi! I'm a language model running on Modal. Talk to me using your microphone, and remember to turn your speaker volume up!"
   }]);
+  const [micAmplitude, setMicAmplitude] = useState(0);
+  const [micThreshold, setMicThreshold] = useState(0.1);
+
+  // Due to how the recorder node callback closures work, we need to use Refs to ensure the callbacks use the latest values
+  const sendRef = useRef();
+  const stateRef = useRef();
   const chatHistoryRef = useRef(chatHistory);
   const playQueueRef = useRef([]);
   const isPlayingRef = useRef(false);
-  const [micAmplitude, setMicAmplitude] = useState(0);
-  const [micThreshold, setMicThreshold] = useState(0.1);
+
   const updateMicThreshold = (value) => {
     // update both in the recorder node and UI state
     stateRef.current.context.recorderNode.updateThreshold(value);
     setMicThreshold(value);
   };
 
+  // Called in SETUP state
   const setupAudio = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const audioContext = new AudioContext();
@@ -81,30 +90,35 @@ function App() {
       console.log("Sent wav segment to server");
     }
 
+    // Callback for when the user mic exceeds the threshold
     const onTalking = () => {
-      // will only transition to RECORDING state if in IDLE state
-      // otherwise, stay in recording until stop signal
+      // state transition only valid in IDLE state, so only relevant in first onTalking
       sendRef.current("START_RECORDING");
     }
 
+    // Callback for when the user has been below threshold for the silence period
     const onSilence = () => {
       if (!stateRef.current.matches('RECORDING')) {
         return;
       }
 
-      // send chat history to server
+      // Prepare to transition to the GENERATING state
+
+      // Send the chat history to the server and end signal to the server
       const historyMessage = `{"type": "history", "value": ${JSON.stringify(chatHistoryRef.current)}}`;
       stateRef.current.context.websocket.send(new TextEncoder().encode(historyMessage));        
-
-      // will only transition to GENERATE state if in RECORDING state
       stateRef.current.context.websocket.send(new TextEncoder().encode(`{"type": "end"}`));
+
+      // Transition to the GENERATING state
       sendRef.current("STOP_RECORDING");
     }
 
+    // Callback for sending amplitude from recorder node to the UI
     const onAmplitude = (amplitude) => {
       setMicAmplitude(amplitude);
     }
 
+    // Recorder node expects the callbacks: onBufferReceived, onTalking, onSilence, onAmplitude
     await audioContext.audioWorklet.addModule("processor.js");
     const recorderNode = new RecorderNode(
       audioContext,
@@ -120,6 +134,7 @@ function App() {
     return { recorderNode, audioContext };
   }
 
+  // Called in SETUP state
   const openWebsocket = async (onWebsocketMessage) => {
     return new Promise((resolve, reject) => {
       const socket = new WebSocket(`/pipeline`);
@@ -139,8 +154,8 @@ function App() {
     });
   }
 
+  // Called in GENERATING state, when we're waiting for the server to send us a response
   const onWebsocketMessage = async (event) => {
-    // this should only ever happen in the generating state
     if (!stateRef.current.matches('GENERATING')) {
       return;
     }
@@ -163,13 +178,12 @@ function App() {
         return;
       } else if (data.type === "text") {
         console.log("Received bot reply:", data.value);
+        // Append bot reply to chat history
         setChatHistory(prevHistory => {
           let lastMessage = prevHistory[prevHistory.length - 1];
           if (lastMessage.role === "user") {
-            // this would be the first message from bot
             return [...prevHistory, { role: "assistant", content: data.value }];
           } else {
-            // append to most recent bot reply
             const updatedHistory = [...prevHistory];
             updatedHistory[updatedHistory.length - 1] = {
               ...lastMessage,
@@ -179,6 +193,7 @@ function App() {
           }
         });
       } else if (data.type === "transcript") {
+        // Append user transcript to chat history
         console.log("Received user transcript:", data.value);
         setChatHistory(prevHistory => [...prevHistory, {role: "user", content: data.value}]);
       }
@@ -186,6 +201,7 @@ function App() {
   }
 
   // Audio player always runs in the background during GENERATING state
+  // It plays the wavs sent by the server.
   useEffect(() => {
     const intervalId = setInterval(async () => {
       if (stateRef.current.matches('GENERATING') && !isPlayingRef.current && playQueueRef.current.length > 0) {
@@ -200,7 +216,7 @@ function App() {
             source.onended = () => {
               isPlayingRef.current = false;
               if (playQueueRef.current.length === 0 && stateRef.current.context.websocket.readyState === WebSocket.CLOSED) {
-                // if after playing audio, the queue is empty and websocket is closed by server, we can assume we're done
+                // on empty queue and websocket closed, transition to the SETUP state to start a new websocket connection
                 sendRef.current("GENERATION_COMPLETE");
                 return;
               }
@@ -225,9 +241,6 @@ function App() {
         console.log("Muting mic");
         context.recorderNode.mute();
       },
-      handleError: (context, event) => {
-        console.error('Error occurred:', event.data);
-      }
     },
     services: {
       doSetup: async (context) => {
@@ -243,7 +256,7 @@ function App() {
         // Ensure warmup
         await fetch(`/prewarm`);
 
-        // Create new websocket connection
+        // Each new bot response is a new websocket session, so prep the connection for the upcoming session.
         const socket = await openWebsocket(onWebsocketMessage);
         context.websocket = socket;
 
@@ -275,7 +288,7 @@ function App() {
   );
 }
 
-function ChatMessage({ content, role }) {
+const ChatMessage = ({ content, role }) => {
   return (
     <div className="w-full">
       <div className={`text-base p-4 flex ${role == "user" ? 'justify-end' : 'justify-start'}`}>
@@ -296,7 +309,7 @@ function ChatMessage({ content, role }) {
   );
 }
 
-function UserHint({ state }) {
+const UserHint = ({ state }) => {
   const [firstSetup, setFirstSetup] = useState(true);
 
   useEffect(() => {
@@ -340,7 +353,7 @@ function UserHint({ state }) {
 }
 
 
-function Sidebar({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) {
+const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) => {
   const [whisperStatus, setWhisperStatus] = useState(false);
   const [zephyrStatus, setZephyrStatus] = useState(false);
   const [xttsStatus, setXttsStatus] = useState(false);
@@ -409,7 +422,7 @@ function Sidebar({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) {
   );
 }
 
-function MicLevels({ micAmplitude, micThreshold, isRecordingState, updateMicThreshold }) {
+const MicLevels = ({ micAmplitude, micThreshold, isRecordingState, updateMicThreshold }) => {
   const maxAmplitude = 0.3; // for scaling
 
   return (
@@ -446,7 +459,7 @@ function MicLevels({ micAmplitude, micThreshold, isRecordingState, updateMicThre
   );
 }
 
-function BotIcon() {
+const BotIcon = () => {
   return (
     <svg
       className="w-full h-full"
@@ -459,7 +472,7 @@ function BotIcon() {
   );
 }
 
-function UserIcon() {
+const UserIcon = () => {
   return (
     <svg
       className="w-full h-full"
