@@ -11,6 +11,7 @@ import websockets
 import os
 from os import path
 import requests
+import base64
 
 # look up user's active modal profile to get serve endpoint
 import toml
@@ -63,11 +64,10 @@ async def main():
             for wav in user_input_generator():
                 s = time.time()
 
-                # sending a wav is a two-step process:
                 await websocket.send(json.dumps({
-                    "type": "wav"
+                    "type": "wav",
+                    "value": base64.b64encode(wav).decode("utf-8")
                 }).encode())
-                await websocket.send(wav)
 
                 print(f"Sent WAV chunk in {time.time() - s}s")
 
@@ -104,9 +104,7 @@ async def main():
                     print(f"Text response: {text_response}")
 
                 elif msg["type"] == "wav":
-                    # first response is the json message with type wav
-                    # next response is the wav itself
-                    wav_response = await websocket.recv()
+                    wav_response = base64.b64decode(msg["value"])
                     if i == 0:
                         print(f"Time since end of user speech to FIRST TTS CHUNK: {time.time() - user_finish_time}s")
 
@@ -118,7 +116,7 @@ async def main():
     except websockets.exceptions.WebSocketException as e:
         pass
 
-    print("Done, output audios saved to /tmp/audio_{i}.wav")
+    print("Done, output audios saved to /tmp/output_{i}.wav")
 
 if __name__ == "__main__":
     asyncio.run(main())

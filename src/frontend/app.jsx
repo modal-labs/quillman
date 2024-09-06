@@ -4,11 +4,13 @@ const { useRef, useEffect, useState } = React;
 import RecorderNode from "./recorder-node.js";
 import {float32ArrayToWav} from "./converter.js";
 
+const baseURL = "" // points to whatever is serving this app (eg your -dev.modal.run for modal serve, or .modal.run for modal deploy)
+
 // We use XState to manage the state of the app, transitioning between states:
 // - SETUP: warming up models, setting up audio context, etc.
 // - IDLE: waiting for user to speak loud enough to trigger the recording
 // - RECORDING: recording audio until user has been silent for a certain amount of time. Audio begins streaming to the server.
-// - GENERATING: /pipeline GENERATINGs a response and streams it back to the client.
+// - GENERATING: /pipeline GENERATEs a response and streams it back to the client. Ends once final audio is played.
 const voiceChatMachine = createMachine({
   id: 'voiceChat',
   initial: 'SETUP',
@@ -16,7 +18,6 @@ const voiceChatMachine = createMachine({
     websocket: null,
     recorderNode: null,
     audioContext: null,
-    expectingRawWav: false,
   },
   states: {
     SETUP: {
@@ -58,7 +59,7 @@ const App = () => {
     content: "Hi! I'm a language model running on Modal. Talk to me using your microphone, and remember to turn your speaker volume up!"
   }]);
   const [micAmplitude, setMicAmplitude] = useState(0);
-  const [micThreshold, setMicThreshold] = useState(0.1);
+  const [micThreshold, setMicThreshold] = useState(0.05);
 
   // Due to how the recorder node callback closures work, we need to use Refs to ensure the callbacks use the latest values
   const sendRef = useRef();
@@ -79,14 +80,18 @@ const App = () => {
     const audioContext = new AudioContext();
     const source = audioContext.createMediaStreamSource(stream);
 
-    const onBufferReceived = (buffer) => {
+    const onBufferReceived = async (buffer) => {
       if (!stateRef.current.matches('RECORDING')) {
         return;
       }
 
-      const wav_buffer = float32ArrayToWav(buffer, 48000);
-      stateRef.current.context.websocket.send(new TextEncoder().encode(`{"type": "wav"}`));
-      stateRef.current.context.websocket.send(wav_buffer);
+      const wav_blob = float32ArrayToWav(buffer, 48000);
+      const array_buffer = await wav_blob.arrayBuffer();
+      const wav_base64 = btoa(
+        new Uint8Array(array_buffer)
+          .reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+      stateRef.current.context.websocket.send(new TextEncoder().encode(`{"type": "wav", "value": "${wav_base64}"}`));
       console.log("Sent wav segment to server");
     }
 
@@ -104,8 +109,8 @@ const App = () => {
 
       // Prepare to transition to the GENERATING state
 
-      // Send the chat history to the server and end signal to the server
-      const historyMessage = `{"type": "history", "value": ${JSON.stringify(chatHistoryRef.current)}}`;
+      // Send the chat history to the server and end signal to the server. Truncate the history to the last 10 messages.
+      const historyMessage = `{"type": "history", "value": ${JSON.stringify(chatHistoryRef.current.slice(-10))}}`;
       stateRef.current.context.websocket.send(new TextEncoder().encode(historyMessage));        
       stateRef.current.context.websocket.send(new TextEncoder().encode(`{"type": "end"}`));
 
@@ -137,7 +142,7 @@ const App = () => {
   // Called in SETUP state
   const openWebsocket = async (onWebsocketMessage) => {
     return new Promise((resolve, reject) => {
-      const socket = new WebSocket(`/pipeline`);
+      const socket = new WebSocket(`${baseURL}/pipeline`);
       socket.onopen = () => {
         console.log('WebSocket connection established');
         resolve(socket);
@@ -163,18 +168,20 @@ const App = () => {
     if (event.data instanceof Blob){
       const arrayBuffer = await event.data.arrayBuffer();
 
-      // if previous message told us we're expecting a raw wav, send to play queue
-      if (stateRef.current.context.expectingRawWav) {
-        console.log("Received wav segment from server");
-        playQueueRef.current.push(arrayBuffer);
-        stateRef.current.context.expectingRawWav = false;
-        return;
-      }
-
       // else parse json
       const data = JSON.parse(new TextDecoder().decode(arrayBuffer));
       if (data.type === "wav") {
-        stateRef.current.context.expectingRawWav = true;
+        const wavBase64 = data.value;
+        const wavBinary = atob(wavBase64);
+        const wavBytes = new Uint8Array(wavBinary.length);
+        for (let i = 0; i < wavBinary.length; i++) {
+          wavBytes[i] = wavBinary.charCodeAt(i);
+        }
+        playQueueRef.current.push(wavBytes.buffer);
+
+        // // // Create a Blob from the Uint8Array
+        // const wavBlob = new Blob([wavBytes], { type: 'audio/wav' });
+        // playQueueRef.current.push(wavBlob);
         return;
       } else if (data.type === "text") {
         console.log("Received bot reply:", data.value);
@@ -254,7 +261,7 @@ const App = () => {
         }
 
         // Ensure warmup
-        await fetch(`/prewarm`);
+        await fetch(`${baseURL}/prewarm`);
 
         // Each new bot response is a new websocket session, so prep the connection for the upcoming session.
         const socket = await openWebsocket(onWebsocketMessage);
@@ -361,7 +368,7 @@ const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) =
   useEffect(() => {
     const intervalId = setInterval(async () => {
       try {
-        const response = await fetch(`/status`);
+        const response = await fetch(`${baseURL}/status`);
         if (!response.ok) {
           throw new Error("Error occurred during status check: " + response.status);
         }
@@ -432,7 +439,7 @@ const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) =
 }
 
 const MicLevels = ({ micAmplitude, micThreshold, isRecordingState, updateMicThreshold }) => {
-  const maxAmplitude = 0.3; // for scaling
+  const maxAmplitude = 0.2; // for scaling
 
   return (
     <div className="w-full max-w-md mx-auto space-y-2">

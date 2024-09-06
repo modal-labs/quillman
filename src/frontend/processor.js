@@ -11,7 +11,7 @@ class WorkletProcessor extends AudioWorkletProcessor {
     this.END_DURATION = END_DURATION;
     this.isMuted = true;
 
-    this.talkingThreshold = 0.1; // initial value
+    this.talkingThreshold = 0.05; // initial value
 
     // State
     this._buffer = [];

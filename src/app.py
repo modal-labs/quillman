@@ -7,6 +7,7 @@ import modal
 from .xtts import XTTS
 from .whisper import Whisper
 from .zephyr import Zephyr
+import base64
 
 from .common import app
 
@@ -74,7 +75,7 @@ def web():
 
         Receive Stages:
         1: User streams their input in via WebSocket. Transcription begins immediately. Multiple transcription chunks may be sent in.
-            recv: { "type": "wav" } -> Tells the server that the next message will be the raw wav bytes.
+            recv: { "type": "wav", "value": <base64 encoded wav bytes> } -> Wav bytes
         2: User optionally sends in a history of previous messages from the chat session.
             recv: { "type": "history", "value": <history> } -> <history> is a list of OpenAI format chat message history
         3: User sends in the end signal. LLM response generation begins once all transcription chunks are complete.
@@ -84,7 +85,7 @@ def web():
         4: LLM response generation yields completed sentences. Each sentence is sent to TTS.
         5: TTS yields a sentence at a time. Each sentence is sent back to the client.
             send: { "type": "text", "value": <text> } -> <text> is a text sentence from the LLM
-            send: { "type": "wav" } -> Tells the client that the next message will be the raw wav bytes.
+            send: { "type": "wav", "value": <base64 encoded wav bytes> } -> Wav bytes
         6: Once all TTS chunks are sent, the websocket is closed.
         '''
         await websocket.accept()
@@ -93,7 +94,6 @@ def web():
 
         # Receive message stream from client
         async def user_input_stream_gen():
-            i = 0
             while True:
                 msg_bytes = await websocket.receive_bytes()
                 msg = json.loads(msg_bytes.decode())
@@ -106,11 +106,7 @@ def web():
                         history.append(history_entry)
                     continue
                 elif msg["type"] == "wav":
-                    # Since it's easier to send wav bytes as an individual message, 
-                    # this json signal tells us the next message will be the wav bytes.
-                    # Read those bytes and yield them to the transcription.
-                    wav_bytes = await websocket.receive_bytes()
-                    i += 1
+                    wav_bytes = base64.b64decode(msg["value"])
                     yield wav_bytes
                 else:
                     print(f"websocket.receive_bytes received unknown message type: {msg['type']}")
@@ -170,9 +166,9 @@ def web():
 
             # Send the wav in two messages: first the json signal, then the actual bytes
             await websocket.send_bytes(json.dumps({
-                "type": "wav"
+                "type": "wav",
+                "value": base64.b64encode(wav_bytesio.getvalue()).decode("utf-8")
             }).encode())
-            await websocket.send_bytes(wav_bytesio.getvalue())
 
         # All done! Close the websocket.
         await websocket.close()
