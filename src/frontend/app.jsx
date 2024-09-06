@@ -369,6 +369,11 @@ const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) =
         setWhisperStatus(data.whisper);
         setZephyrStatus(data.zephyr);
         setXttsStatus(data.xtts);
+
+        // stop once all services are up
+        if (data.whisper && data.zephyr && data.xtts) {
+          clearInterval(intervalId);
+        }
       } catch (error) {
         console.error(error);
       }
@@ -383,21 +388,27 @@ const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) =
         <h2 className="text-xl">Service Status</h2>
         <div className="flex justify-between items-center">
           <p>Whisper</p>
-          <div className={`${whisperStatus ? 'text-primary' : 'text-red-500'}`}>
-            ●
-          </div>
+          {whisperStatus ? (
+            <div className="text-white text-xl">👂</div>
+          ) : (
+            <div className="text-red-500 text-xl">●</div>
+          )}
         </div>
         <div className="flex justify-between items-center">
-          <p>Zephyr LLM</p>
-          <div className={`${zephyrStatus ? 'text-primary' : 'text-red-500'}`}>
-            ●
-          </div>
+          <p>Zephyr</p>
+          {zephyrStatus ? (
+            <div className="text-white text-xl">🧠</div>
+          ) : (
+            <div className="text-red-500 text-xl">●</div>
+          )}
         </div>
         <div className="flex justify-between items-center">
           <p>XTTS</p>
-          <div className={`${xttsStatus ? 'text-primary' : 'text-red-500'}`}>
-            ●
-          </div>
+          {xttsStatus ? (
+            <div className="text-white text-xl">👄</div>
+            ) : (
+            <div className="text-red-500 text-xl">●</div>
+          )}
         </div>
       </div>
       <div className="mt-8 w-full">
