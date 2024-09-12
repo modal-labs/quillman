@@ -16,7 +16,7 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 2. FastAPI server ([`src/app.py`](./src/app.py))
 3. Whisper transcription module ([`src/whisper.py`](./src/whisper.py))
 4. XTTS text-to-speech module ([`src/xtts.py`](./src/xtts.py))
-5. Llama 3.1 language model module ([`src/llama.py`](./src/llama.py))
+5. Llama 3.1 text generation module ([`src/llama.py`](./src/llama.py))
 
 Read the accompanying [docs](https://modal.com/docs/examples/llm-voice-chat) for a detailed look at each of these components.
 
