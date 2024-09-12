@@ -1,5 +1,19 @@
 """
-https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct
+Text generation service based on the Llama 3.1 8B Instruct model.
+
+The model is based on the [Meta-Llama](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct) model, which is licensed under the Llama3.1 license.
+
+Pulling the model weights from HuggingFace requires Meta org approval.
+Follow these steps to optain pull access:
+- Go to https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct
+- Scroll through the "LLAMA 3.1 COMMUNITY LICENSE AGREEMENT"
+- Fill out the form and submit
+- Acquire a HuggingFace API token from https://huggingface.co/settings/tokens
+- Set that token as a Modal secret with the name "huggingface-key" at https://modal.com/secrets, using the variable name "HF_TOKEN"
+
+Access is usually granted within an hour or two.
+
+We use the [VLLM](https://github.com/vllm-project/vllm) library to run the model.
 """
 import json
 import time
@@ -12,7 +26,9 @@ import modal
 from .common import app
 
 MODEL_DIR = "/model"
-MODEL_NAME = "meta-llama/Meta-Llama-3.1-8B-Instruct" # requires org approval, usually granted within a few hours
+
+# Llama 3.1 requires an org approval, usually granted within a few hours
+MODEL_NAME = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 GPU_CONFIG = modal.gpu.A100(size="40GB", count=1)
 
 def download_model_to_image(model_dir, model_name):
@@ -50,6 +66,7 @@ llama_image = (
     container_idle_timeout=60 * 10,
     allow_concurrent_inputs=10,
     image=llama_image,
+    secrets=[modal.Secret.from_name("huggingface-key")],
 )
 class Llama:
     @modal.build()
@@ -175,9 +192,8 @@ class Llama:
 
 
 @app.local_entrypoint()
-def main():
-    question = "Who was Emperor Norton I, and what was his significance in San Francisco's history?"
+def main(prompt: str = "Who was Emperor Norton I, and what was his significance in San Francisco's history?"):
     model = Llama()
-    for token in model.generate.remote_gen(question):
+    for token in model.generate.remote_gen(prompt):
         print(token, end=" ")
 

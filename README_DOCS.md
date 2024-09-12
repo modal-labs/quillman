@@ -38,25 +38,25 @@ In this case, we want to predict the text that a helpful, friendly assistant mig
 
 As with all Modal applications, we start by describing the environment (the container `Image`), which we construct via Python method chaining:
 
-`zephyr_image = (    modal.Image.debian_slim(python_version="3.11")    .pip_install(        "autoawq==0.1.8",        "torch==2.1.2",    ))`
+`llama_image = (    modal.Image.debian_slim(python_version="3.10")    .pip_install(        "transformers==4.44.2",        "vllm==0.6.0",        "torch==2.4.0",        "hf_transfer==0.1.8",        "huggingface_hub==0.24.6",    )    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"}))`
 
 Copy
 
-The chain starts with a base Debian container installs `python_version` 3.11, then uses [`pip` to `install` our Python packages we need](https://modal.com/docs/reference/modal.Image#pip_install). Pinning versions of our dependencies ensures that the built image is reproducible.
+The chain starts with a base Debian container installs `python_version` 3.10, then uses [`pip` to `install` our Python packages we need](https://modal.com/docs/reference/modal.Image#pip_install). Pinning versions of our dependencies ensures that the built image is reproducible.
 
-We use [AutoAWQ](https://github.com/casper-hansen/AutoAWQ), an implementation of [Activation-aware Weight Quantization](https://arxiv.org/abs/2306.00978), to [quantize](https://pytorch.org/docs/stable/quantization.html) our model to 4 bits for faster inference.
+We use [VLLM](https://github.com/vllm-project/vllm), a high-performance open-source library for running large language models on CPUs and GPUs, to run the Llama model. This server scales to handle multiple concurrent requests, keeping costs down for our LLM module.
 
-The models we use define a [`generate`](TODO: permalink to spot in code) function that constructs an input to our language model from a prompt template, the conversation history, and the latest text from the user. Then, it `yield`s (streams) tokens as they are produced. Remote Python generators work out-of-the-box in Modal, so building streaming interactions is easy.
+The models we use define a [`generate`](TODO: permalink to spot in code) function that constructs an input to our language model from a prompt template, the conversation history, and the latest text from the user. Then, it `yield`s (streams) words as they are produced. Remote Python generators work out-of-the-box in Modal, so building streaming interactions is easy.
 
 Although we’re going to call this model from our backend API, it’s useful to test it directly as well. To do this, we define a [`local_entrypoint`](https://modal.com/docs/guide/apps#entrypoints-for-ephemeral-apps):
 
-`@app.local_entrypoint()def main(text: str):    model = Zephyr()    for val in model.generate.remote(text):        print(val, end="", flush=True)`
+`@app.local_entrypoint()def main(prompt: str):    model = Llama()    for val in model.generate.remote_gen(prompt):        print(val, end="", flush=True)`
 
 Copy
 
 Now, we can [`run`](https://modal.com/docs/guide/apps#ephemeral-apps) the model with a prompt of our choice from the terminal:
 
-`modal run -q src.zephyr --input "How do antihistamines work?"`
+`modal run -q src.llama --prompt "How do antihistamines work?"`
 
 TODO: GIF HERE
 

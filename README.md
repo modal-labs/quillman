@@ -16,7 +16,7 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 2. FastAPI server ([`src/app.py`](./src/app.py))
 3. Whisper transcription module ([`src/whisper.py`](./src/whisper.py))
 4. XTTS text-to-speech module ([`src/xtts.py`](./src/xtts.py))
-5. Zephyr language model module ([`src/zephyr.py`](./src/zephyr.py))
+5. Llama 3.1 language model module ([`src/llama.py`](./src/llama.py))
 
 Read the accompanying [docs](https://modal.com/docs/examples/llm-voice-chat) for a detailed look at each of these components.
 
@@ -30,7 +30,7 @@ Read the accompanying [docs](https://modal.com/docs/examples/llm-voice-chat) for
 
 ### Developing the inference modules
 
-Whisper, XTTS, and Zephyr each have a [local_entrypoint()](https://modal.com/docs/reference/modal.App#local_entrypoint) method that is invoked when you run that file directly. 
+Whisper, XTTS, and Llama each have a [local_entrypoint()](https://modal.com/docs/reference/modal.App#local_entrypoint) method that is invoked when you run that file directly. 
 This is useful for testing each module standalone, without needing to run the whole app.
 
 For example, to test the Whisper transcription module, run:

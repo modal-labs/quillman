@@ -1,5 +1,9 @@
 """
 Speech-to-text transcriptiong service based on OpenAI Whisper V3 large.
+
+We use the [Transformers](https://github.com/huggingface/transformers) library to transcribe audio in real-time.
+
+The model is based on the [OpenAI Whisper V3](https://huggingface.co/openai/whisper-large-v3) model, which is licensed under the Apache 2.0 license.
 """
 
 import time
