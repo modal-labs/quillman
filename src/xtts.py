@@ -21,7 +21,10 @@ from .common import app
 tts_image = (
     modal.Image.debian_slim(python_version="3.11.9")
     .apt_install("git")
-    .run_commands("pip install git+https://github.com/coqui-ai/TTS@8c20a599d8d4eac32db2f7b8cd9f9b3d1190b73a")
+    .pip_install(
+        "git+https://github.com/coqui-ai/TTS@8c20a599d8d4eac32db2f7b8cd9f9b3d1190b73a",
+        "deepspeed==0.10.3",
+    )
     .env({"COQUI_TOS_AGREED": "1"}) # Coqui requires you to agree to the terms of service before downloading the model
 )
 
@@ -83,10 +86,13 @@ class XTTS:
 @app.local_entrypoint()
 def tts_entrypoint(text: str = "Hello, how are you doing on this fine day?"):
     tts = XTTS()
+    
+    # run multiple times to ensure cache is warmed up
 
-    text, wav = tts.speak.remote(text)
-    print(text)
-    with open(f"/tmp/output_xtts.wav", "wb") as f:
-        f.write(wav.getvalue())
+    for i in range(3):
+        text, wav = tts.speak.remote(text)
+        print(text)
+        with open(f"/tmp/output_xtts.wav", "wb") as f:
+            f.write(wav.getvalue())
 
     print("Done, output audio saved to /tmp/output_xtts.wav")
