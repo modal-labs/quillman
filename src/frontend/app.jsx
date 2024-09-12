@@ -361,7 +361,7 @@ const UserHint = ({ state }) => {
 
 const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) => {
   const [whisperStatus, setWhisperStatus] = useState(false);
-  const [zephyrStatus, setZephyrStatus] = useState(false);
+  const [llamaStatus, setLlamaStatus] = useState(false);
   const [xttsStatus, setXttsStatus] = useState(false);
   
   // Backend status monitor that always runs in the background
@@ -374,11 +374,11 @@ const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) =
         }
         const data = await response.json();
         setWhisperStatus(data.whisper);
-        setZephyrStatus(data.zephyr);
+        setLlamaStatus(data.llama);
         setXttsStatus(data.xtts);
 
         // stop once all services are up
-        if (data.whisper && data.zephyr && data.xtts) {
+        if (data.whisper && data.llama && data.xtts) {
           clearInterval(intervalId);
         }
       } catch (error) {
@@ -402,8 +402,8 @@ const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) =
           )}
         </div>
         <div className="flex justify-between items-center">
-          <p>Zephyr</p>
-          {zephyrStatus ? (
+          <p>Llama</p>
+          {llamaStatus ? (
             <div className="text-white text-xl">🧠</div>
           ) : (
             <div className="text-red-500 text-xl">●</div>
