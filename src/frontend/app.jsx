@@ -4,8 +4,7 @@ const { useRef, useEffect, useState } = React;
 import RecorderNode from "./recorder-node.js";
 import {float32ArrayToWav} from "./converter.js";
 
-// const baseURL = "" // points to whatever is serving this app (eg your -dev.modal.run for modal serve, or .modal.run for modal deploy)
-const baseURL = "https://erik-dunteman--quillman-web.modal.run";
+const baseURL = "" // points to whatever is serving this app (eg your -dev.modal.run for modal serve, or .modal.run for modal deploy)
 
 // We use XState to manage the state of the app, transitioning between states:
 // - SETUP: warming up models, setting up audio context, etc.
