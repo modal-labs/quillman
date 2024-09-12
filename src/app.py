@@ -4,9 +4,10 @@ API routes for transcription, language model generation and text-to-speech.
 """
 from pathlib import Path
 import modal
+
 from .xtts import XTTS
 from .whisper import Whisper
-from .zephyr import Zephyr
+from .llama import Llama
 import base64
 
 from .common import app
@@ -41,18 +42,18 @@ def web():
 
     # Instantiate the inference modules
     whisper = Whisper()
-    zephyr = Zephyr()
+    llama = Llama()
     xtts = XTTS()
 
     @web_app.get("/status")
     async def status():
         '''Return the status of each inference module, to provide feedback to the user about the app's readiness.'''
         whisper_stats = whisper.prewarm.get_current_stats()
-        zephyr_stats = zephyr.prewarm.get_current_stats()
+        llama_stats = llama.prewarm.get_current_stats()
         xtts_stats = xtts.prewarm.get_current_stats()
         return {
             "whisper": whisper_stats.num_total_runners > 0 and whisper_stats.backlog == 0,
-            "zephyr": zephyr_stats.num_total_runners > 0 and zephyr_stats.backlog == 0,
+            "llama": llama_stats.num_total_runners > 0 and llama_stats.backlog == 0,
             "xtts": xtts_stats.num_total_runners > 0 and xtts_stats.backlog == 0,
         }
 
@@ -61,7 +62,7 @@ def web():
         '''Prewarm the inference modules, to ensure they're ready to receive requests.'''
         prewarm_futures = [
             whisper.prewarm.spawn(),
-            zephyr.prewarm.spawn(),
+            llama.prewarm.spawn(),
             xtts.prewarm.spawn(),
         ]
         for i in prewarm_futures:
@@ -132,7 +133,7 @@ def web():
         }).encode())
 
         # Send the transcript to the LLM
-        llm_response_stream_gen = zephyr.generate.remote_gen(transcript, history)
+        llm_response_stream_gen = llama.generate.remote_gen(transcript, history)
 
         # Accumulate the LLM response stream into sentences
         # for more natural-sounding TTS.
