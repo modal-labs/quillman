@@ -111,7 +111,7 @@ async def main():
                     with open(f"/tmp/output_{i}.wav", "wb") as f:
                         f.write(wav_response)
 
-                i += 1
+                    i += 1
 
     except websockets.exceptions.WebSocketException as e:
         pass
