@@ -109,8 +109,11 @@ def web():
         # Receive message stream from client
         async def user_input_stream_gen():
             while True:
+                debug_print("Websocket awaiting message")
                 msg_bytes = await websocket.receive_bytes()
+                debug_print("Websocket received message")
                 msg = json.loads(msg_bytes.decode())
+                debug_print("Websocket decoded message")
                 if msg["type"] == "end":
                     debug_print("Websocket yielded end message to server")
                     critical_stage_start_time = time.time()
@@ -126,6 +129,7 @@ def web():
                 elif msg["type"] == "wav":
                     debug_print("Websocket yielded wav message to server")
                     wav_bytes = base64.b64decode(msg["value"])
+                    debug_print("Websocket decoded wav message")
                     yield wav_bytes
                 else:
                     print(f"websocket.receive_bytes received unknown message type: {msg['type']}")
@@ -136,6 +140,7 @@ def web():
         async for chunk in user_input_stream_gen():
             debug_print("user_input_stream_gen yielded chunk, spawning transcribe...")
             transcribe_futures.append(whisper.transcribe.spawn(chunk))
+            debug_print("transcribe_future spawned")
         
         # Await all transcription chunks, since reponse generation 
         # requires the full transcript before it can begin

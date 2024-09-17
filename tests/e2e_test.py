@@ -52,6 +52,8 @@ def user_input_generator():
 
     # used for understanding time of pipeline
     debug_print("User finished speaking, waiting...")
+    global user_finish_time
+    user_finish_time = time.time()
 
 async def main():
     debug_print("Starting client script")
@@ -83,14 +85,13 @@ async def main():
             for wav in user_input_generator():
                 s = time.time()
 
+                debug_print(f"Sending WAV chunk...")
                 await websocket.send(json.dumps({
                     "type": "wav",
                     "value": base64.b64encode(wav).decode("utf-8")
                 }).encode())
 
                 debug_print(f"Sent WAV chunk in {time.time() - s}s")
-
-            user_finish_time = time.time()
 
             history = [
                 {"role": "user", "content": "Hello, how are you?"},
