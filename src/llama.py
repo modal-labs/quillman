@@ -31,23 +31,6 @@ MODEL_DIR = "/model"
 MODEL_NAME = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 GPU_CONFIG = modal.gpu.A100(size="40GB", count=1)
 
-def download_model_to_image(model_dir, model_name):
-    from huggingface_hub import snapshot_download, login
-    from transformers.utils import move_cache
-    print(os.environ)
-
-    login(os.environ["HF_TOKEN"])
-
-    os.makedirs(model_dir, exist_ok=True)
-
-    snapshot_download(
-        model_name,
-        local_dir=model_dir,
-        ignore_patterns=["*.pt", "*.bin"],  # Using safetensors
-    )
-    move_cache()
-
-
 llama_image = (
     modal.Image.debian_slim(python_version="3.10")
     .pip_install(
