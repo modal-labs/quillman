@@ -25,10 +25,10 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import Response
     from fastapi.staticfiles import StaticFiles
-    import fastapi
-
-    import numpy as np
     import json
+
+    # disable caching on static files
+    StaticFiles.is_not_modified = lambda self, *args, **kwargs: False
     
     web_app = FastAPI()
 
