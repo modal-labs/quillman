@@ -1,191 +1,481 @@
-import RecorderNode from "./recorder-node.js";
-
-const { useState, useEffect, useCallback, useRef } = React;
-
-const { createMachine, assign } = XState;
+const { createMachine} = XState;
 const { useMachine } = XStateReact;
+const { useRef, useEffect, useState } = React;
+import RecorderNode from "./recorder-node.js";
+import {float32ArrayToWav} from "./converter.js";
 
-const SILENT_DELAY = 4000; // in milliseconds
-const CANCEL_OLD_AUDIO = false; // TODO: set this to true after cancellations don't terminate containers.
-const INITIAL_MESSAGE =
-  "Hi! I'm a language model running on Modal. Talk to me using your microphone, and remember to turn your speaker volume up!";
+const baseURL = "" // points to whatever is serving this app (eg your -dev.modal.run for modal serve, or .modal.run for modal deploy)
 
-const INDICATOR_TYPE = {
-  TALKING: "talking",
-  SILENT: "silent",
-  GENERATING: "generating",
-  IDLE: "idle",
-};
-
-const MODELS = [
-  { id: "zephyr-7b-beta-4bit", label: "Zephyr 7B beta (4-bit)" },
-  // { id: "vicuna-13b-4bit", label: "Vicuna 13B (4-bit)" },
-  // { id: "alpaca-lora-7b", label: "Alpaca LORA 7B" },
-];
-
-const chatMachine = createMachine(
-  {
-    initial: "botDone",
-    context: {
-      pendingSegments: 0,
-      transcript: "",
-      messages: 1,
-    },
-    states: {
-      botGenerating: {
-        on: {
-          GENERATION_DONE: { target: "botDone", actions: "resetTranscript" },
-        },
-      },
-      botDone: {
-        on: {
-          TYPING_DONE: {
-            target: "userSilent",
-            actions: ["resetPendingSegments", "incrementMessages"],
-          },
-          SEGMENT_RECVD: {
-            target: "userTalking",
-            actions: [
-              "resetPendingSegments",
-              "segmentReceive",
-              "incrementMessages",
-            ],
-          },
-        },
-      },
-      userTalking: {
-        on: {
-          SILENCE: { target: "userSilent" },
-          SEGMENT_RECVD: { actions: "segmentReceive" },
-          TRANSCRIPT_RECVD: { actions: "transcriptReceive" },
-        },
-      },
-      userSilent: {
-        on: {
-          SOUND: { target: "userTalking" },
-          SEGMENT_RECVD: { actions: "segmentReceive" },
-          TRANSCRIPT_RECVD: { actions: "transcriptReceive" },
-        },
-        after: [
-          {
-            delay: SILENT_DELAY,
-            target: "botGenerating",
-            actions: "incrementMessages",
-            cond: "canGenerate",
-          },
-          {
-            delay: SILENT_DELAY,
-            target: "userSilent",
-          },
-        ],
-      },
-    },
+// We use XState to manage the state of the app, transitioning between states:
+// - SETUP: warming up models, setting up audio context, etc.
+// - IDLE: waiting for user to speak loud enough to trigger the recording
+// - RECORDING: recording audio until user has been silent for a certain amount of time. Audio begins streaming to the server.
+// - GENERATING: /pipeline GENERATEs a response and streams it back to the client. Ends once final audio is played.
+const voiceChatMachine = createMachine({
+  id: 'voiceChat',
+  initial: 'SETUP',
+  context: {
+    websocket: null,
+    recorderNode: null,
+    audioContext: null,
   },
-  {
-    actions: {
-      segmentReceive: assign({
-        pendingSegments: (context) => context.pendingSegments + 1,
-      }),
-      transcriptReceive: assign({
-        pendingSegments: (context) => context.pendingSegments - 1,
-        transcript: (context, event) => {
-          console.log(context, event);
-          return context.transcript + event.transcript;
+  states: {
+    SETUP: {
+      on: {
+        SETUP_COMPLETE: 'IDLE'
+      },
+      invoke: {
+        src: 'doSetup',
+        onDone: {
+          actions: ['unmuteMic'],
+          target: 'IDLE',
         },
-      }),
-      resetPendingSegments: assign({ pendingSegments: 0 }),
-      incrementMessages: assign({
-        messages: (context) => context.messages + 1,
-      }),
-      resetTranscript: assign({ transcript: "" }),
+      }
     },
-    guards: {
-      canGenerate: (context) => {
-        console.log(context);
-        return context.pendingSegments === 0 && context.transcript.length > 0;
+    IDLE: {
+      on: {
+        START_RECORDING: 'RECORDING'
+      }
+    },
+    RECORDING: {
+      on: {
+        STOP_RECORDING: {
+          target: 'GENERATING',
+          actions: ['muteMic']
+        }
+      }
+    },
+    GENERATING: {
+      on: {
+        GENERATION_COMPLETE: 'SETUP',
+      }
+    }
+  }
+});
+
+const App = () => {
+  const [chatHistory, setChatHistory] = useState([{
+    role: "assistant",
+    content: "Hi! I'm a language model running on Modal. Talk to me using your microphone, and remember to turn your speaker volume up!"
+  }]);
+  const [micAmplitude, setMicAmplitude] = useState(0);
+  const [micThreshold, setMicThreshold] = useState(0.05);
+
+  // Due to how the recorder node callback closures work, we need to use Refs to ensure the callbacks use the latest values
+  const sendRef = useRef();
+  const stateRef = useRef();
+  const chatHistoryRef = useRef(chatHistory);
+  const playQueueRef = useRef([]);
+  const isPlayingRef = useRef(false);
+
+  const updateMicThreshold = (value) => {
+    // update both in the recorder node and UI state
+    stateRef.current.context.recorderNode.updateThreshold(value);
+    setMicThreshold(value);
+  };
+
+  // Called in SETUP state
+  const setupAudio = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(stream);
+
+    const onBufferReceived = async (buffer) => {
+      if (!stateRef.current.matches('RECORDING')) {
+        return;
+      }
+
+      const wav_blob = float32ArrayToWav(buffer, 48000);
+      const array_buffer = await wav_blob.arrayBuffer();
+      const wav_base64 = btoa(
+        new Uint8Array(array_buffer)
+          .reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+      stateRef.current.context.websocket.send(new TextEncoder().encode(`{"type": "wav", "value": "${wav_base64}"}`));
+      console.log("Sent wav segment to server");
+    }
+
+    // Callback for when the user mic exceeds the threshold
+    const onTalking = () => {
+      // state transition only valid in IDLE state, so only relevant in first onTalking
+      sendRef.current("START_RECORDING");
+    }
+
+    // Callback for when the user has been below threshold for the silence period
+    const onSilence = () => {
+      if (!stateRef.current.matches('RECORDING')) {
+        return;
+      }
+
+      // Prepare to transition to the GENERATING state
+
+      // Send the chat history to the server and end signal to the server. Truncate the history to the last 10 messages.
+      const historyMessage = `{"type": "history", "value": ${JSON.stringify(chatHistoryRef.current.slice(-10))}}`;
+      stateRef.current.context.websocket.send(new TextEncoder().encode(historyMessage));        
+      stateRef.current.context.websocket.send(new TextEncoder().encode(`{"type": "end"}`));
+
+      // Transition to the GENERATING state
+      sendRef.current("STOP_RECORDING");
+    }
+
+    // Callback for sending amplitude from recorder node to the UI
+    const onAmplitude = (amplitude) => {
+      setMicAmplitude(amplitude);
+    }
+
+    // Recorder node expects the callbacks: onBufferReceived, onTalking, onSilence, onAmplitude
+    await audioContext.audioWorklet.addModule("processor.js");
+    const recorderNode = new RecorderNode(
+      audioContext,
+      onBufferReceived,
+      onTalking,
+      onSilence,
+      onAmplitude,
+    );
+
+    source.connect(recorderNode);
+    recorderNode.connect(audioContext.destination);
+    console.log("Audio setup complete");
+    return { recorderNode, audioContext };
+  }
+
+  // Called in SETUP state
+  const openWebsocket = async (onWebsocketMessage) => {
+    return new Promise((resolve, reject) => {
+      const socket = new WebSocket(`${baseURL}/pipeline`);
+      socket.onopen = () => {
+        console.log('WebSocket connection established');
+        resolve(socket);
+      };
+      socket.onclose = () => {
+        console.log('WebSocket connection closed');
+      };
+      socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        reject(error);
+      };
+      socket.onmessage = onWebsocketMessage;
+      return socket;
+    });
+  }
+
+  // Called in GENERATING state, when we're waiting for the server to send us a response
+  const onWebsocketMessage = async (event) => {
+    if (!stateRef.current.matches('GENERATING')) {
+      return;
+    }
+
+    if (event.data instanceof Blob){
+      const arrayBuffer = await event.data.arrayBuffer();
+
+      // else parse json
+      const data = JSON.parse(new TextDecoder().decode(arrayBuffer));
+      if (data.type === "wav") {
+        const wavBase64 = data.value;
+        const wavBinary = atob(wavBase64);
+        const wavBytes = new Uint8Array(wavBinary.length);
+        for (let i = 0; i < wavBinary.length; i++) {
+          wavBytes[i] = wavBinary.charCodeAt(i);
+        }
+        playQueueRef.current.push(wavBytes.buffer);
+
+        // // // Create a Blob from the Uint8Array
+        // const wavBlob = new Blob([wavBytes], { type: 'audio/wav' });
+        // playQueueRef.current.push(wavBlob);
+        return;
+      } else if (data.type === "text") {
+        console.log("Received bot reply:", data.value);
+        // Append bot reply to chat history
+        setChatHistory(prevHistory => {
+          let lastMessage = prevHistory[prevHistory.length - 1];
+          if (lastMessage.role === "user") {
+            return [...prevHistory, { role: "assistant", content: data.value }];
+          } else {
+            const updatedHistory = [...prevHistory];
+            updatedHistory[updatedHistory.length - 1] = {
+              ...lastMessage,
+              content: lastMessage.content + "\n" + data.value
+            };
+            return updatedHistory;
+          }
+        });
+      } else if (data.type === "transcript") {
+        // Append user transcript to chat history
+        console.log("Received user transcript:", data.value);
+        setChatHistory(prevHistory => [...prevHistory, {role: "user", content: data.value}]);
+      }
+    };
+  }
+
+  // Audio player always runs in the background during GENERATING state
+  // It plays the wavs sent by the server.
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      if (stateRef.current.matches('GENERATING') && !isPlayingRef.current && playQueueRef.current.length > 0) {
+        isPlayingRef.current = true;
+        const arrayBuffer = playQueueRef.current.shift();
+        if (arrayBuffer) {
+          try {
+            const audioBuffer = await stateRef.current.context.audioContext.decodeAudioData(arrayBuffer);
+            const source = stateRef.current.context.audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(stateRef.current.context.audioContext.destination);
+            source.onended = () => {
+              isPlayingRef.current = false;
+              if (playQueueRef.current.length === 0 && stateRef.current.context.websocket.readyState === WebSocket.CLOSED) {
+                // on empty queue and websocket closed, transition to the SETUP state to start a new websocket connection
+                sendRef.current("GENERATION_COMPLETE");
+                return;
+              }
+            };
+            source.start();
+          } catch (error) {
+            console.error("Error decoding audio data:", error);
+          }
+        }
+      }
+    }, 200);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  const [state, send] = useMachine(voiceChatMachine, {
+    actions: {
+      unmuteMic: (context, event) => {
+        console.log("Unmuting mic");
+        context.recorderNode.unmute();
+      },
+      muteMic: (context, event) => {
+        console.log("Muting mic");
+        context.recorderNode.mute();
       },
     },
-  }
-);
+    services: {
+      doSetup: async (context) => {
+        console.log('Setting up services');
 
-function Sidebar({
-  selected,
-  isTortoiseOn,
-  isMicOn,
-  setIsMicOn,
-  setIsTortoiseOn,
-  onModelSelect,
-}) {
+        // Setup audio if not already setup
+        if (!context.recorderNode) {
+          const { recorderNode, audioContext } = await setupAudio();
+          context.audioContext = audioContext;
+          context.recorderNode = recorderNode;
+        }
+
+        // Ensure warmup
+        await fetch(`${baseURL}/prewarm`);
+
+        // Each new bot response is a new websocket session, so prep the connection for the upcoming session.
+        const socket = await openWebsocket(onWebsocketMessage);
+        context.websocket = socket;
+
+        return Promise.resolve(context);
+      },
+    }
+  });
+
+  sendRef.current = send;
+  stateRef.current = state;
+  chatHistoryRef.current = chatHistory;
+
   return (
-    <nav className="bg-zinc-900 w-[400px] flex flex-col h-full gap-2 p-2 text-gray-100 ">
-      <h1 className="text-4xl font-semibold text-center text-zinc-200 ml-auto mr-auto flex gap-2 items-center justify-center h-20">
-        QuiLLMan
-        <span className="bg-yellow-300 text-yellow-900 py-0.5 px-1.5 text-xs rounded-md uppercase">
-          Plus
-        </span>
-      </h1>
-      <div className="flex flex-row justify-evenly mb-4">
-        <button
-          className="flex items-center justify-center w-8 h-8 min-w-8 min-h-8 fill-zinc-300 hover:fill-zinc-50"
-          onClick={() => setIsMicOn(!isMicOn)}
-        >
-          {isMicOn ? <MicOnIcon /> : <MicOffIcon />}
-        </button>
-        <div className="group flex relative">
-          <button
-            className="flex items-center justify-center w-8 h-8 min-w-8 min-h-8 fill-zinc-300 hover:fill-zinc-50"
-            onClick={() => setIsTortoiseOn(!isTortoiseOn)}
-          >
-            {isTortoiseOn ? <FaceIcon /> : <BotIcon />}
-          </button>
-
-          <span
-            className="group-hover:opacity-100 transition-opacity bg-zinc-900 px-1 text-sm text-zinc-100 rounded-md absolute left-1/2 
-    -translate-x-1/2 translate-y-1/2 w-fit opacity-0 m-2 mx-auto"
-          >
-            {isTortoiseOn ? "TTS (natural; slow)" : "TTS (system; fast)"}
-          </span>
+    <div className="app absolute h-screen w-screen flex text-white">
+      <div className="flex w-full">
+        <div className="w-1/6">
+          <Sidebar stateRef={stateRef} micAmplitude={micAmplitude} micThreshold={micThreshold} updateMicThreshold={updateMicThreshold} />
+        </div>
+        <div className="w-5/6 flex-grow overflow-auto flex-col items-center p-3 px-6">
+          <h1 className="text-2xl">Chat</h1>
+            {chatHistory.map(({ role, content }) => (
+              <ChatMessage content={content} role={role} key={content} />
+            ))}
+            <UserHint state={stateRef.current} />
+            <div className="h-5/6 flex-shrink-0"></div>
         </div>
       </div>
-      {MODELS.map(({ id, label }) => (
-        <button
-          key={id}
-          className={
-            "py-2 items-center justify-center rounded-md cursor-pointer border border-white/20 hover:bg-white/10 hover:text-zinc-200 " +
-            (id == selected
-              ? "bg-opacity-10 bg-primary ring-1 ring-primary text-zinc-200"
-              : "text-zinc-400 ")
-          }
-          onClick={() => onModelSelect(id)}
-        >
-          {label}
-        </button>
-      ))}
-      <button
-        className="py-2 items-center justify-center rounded-md cursor-pointer border border-white/20 pointer-events-none"
-        onClick={() => onModelSelect(id)}
-        disabled
-      >
-        More coming soon!
-      </button>
+    </div>
+  );
+}
+
+const ChatMessage = ({ content, role }) => {
+  return (
+    <div className="w-full">
+      <div className={`text-base p-4 flex ${role == "user" ? 'justify-end' : 'justify-start'}`}>
+        <div className="flex items-start gap-2 max-w-[600px] w-fit">
+          <div
+            className={`flex-shrink-0 flex items-center justify-center w-8 h-8 mt-1 ${
+              role == "user" ? "fill-yellow-500 order-last" : "fill-primary"
+            }`}
+          >
+            {role == "user" ? <UserIcon /> : <BotIcon />}
+          </div>
+          <div className="flex-grow whitespace-pre-wrap rounded-[16px] p-3 bg-zinc-800 border text-left">
+            {content}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const UserHint = ({ state }) => {
+  const [firstSetup, setFirstSetup] = useState(true);
+
+  useEffect(() => {
+    if (state.matches('IDLE') && firstSetup) {
+      setFirstSetup(false);
+    }
+  }, [state, firstSetup]);
+
+  if (state.matches('SETUP') && !firstSetup) {
+    return null;
+  }
+
+  if (state.matches("GENERATING")) {
+    return null;
+  }
+
+  let hintText = "";
+  if (state.matches('SETUP') && firstSetup) {
+    hintText = "Waking up models...";
+  } else if (state.matches('IDLE')) {
+    hintText = "Ready to talk!";
+  } else if (state.matches('RECORDING')) {
+    hintText = "Listening";
+  }
+
+  if (!hintText) {
+    return null;
+  }
+
+  return (
+    <div className="w-full">
+      <div className="text-md p-4 flex justify-center">
+        <div className="flex items-start gap-2 max-w-[600px] w-fit">
+          <div className="flex-grow whitespace-pre-wrap rounded-[16px] p-3 bg-zinc-800/50 pulse">
+            {hintText}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const Sidebar = ({ stateRef, micAmplitude, micThreshold, updateMicThreshold }) => {
+  const [whisperStatus, setWhisperStatus] = useState(false);
+  const [llamaStatus, setLlamaStatus] = useState(false);
+  const [xttsStatus, setXttsStatus] = useState(false);
+  
+  // Backend status monitor that always runs in the background
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      try {
+        const response = await fetch(`${baseURL}/status`);
+        if (!response.ok) {
+          throw new Error("Error occurred during status check: " + response.status);
+        }
+        const data = await response.json();
+        setWhisperStatus(data.whisper);
+        setLlamaStatus(data.llama);
+        setXttsStatus(data.xtts);
+
+        // stop once all services are up
+        if (data.whisper && data.llama && data.xtts) {
+          clearInterval(intervalId);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }, 1000);
+    return () => clearInterval(intervalId);
+  }, []);
+  
+  return (
+    <div className="bg-zinc-800 fixed w-1/6 top-0 bottom-0 flex flex-col items-center p-4">
+      <h1 className="text-3xl">QuiLLMan</h1>
+      <div className="flex flex-col gap-2 w-full mt-8 text-md">
+        <h2 className="text-xl">Service Status</h2>
+        <div className="flex justify-between items-center">
+          <p>Whisper</p>
+          {whisperStatus ? (
+            <div className="text-white text-xl">👂</div>
+          ) : (
+            <div className="text-red-500 text-xl">●</div>
+          )}
+        </div>
+        <div className="flex justify-between items-center">
+          <p>Llama</p>
+          {llamaStatus ? (
+            <div className="text-white text-xl">🧠</div>
+          ) : (
+            <div className="text-red-500 text-xl">●</div>
+          )}
+        </div>
+        <div className="flex justify-between items-center">
+          <p>XTTS</p>
+          {xttsStatus ? (
+            <div className="text-white text-xl">👄</div>
+            ) : (
+            <div className="text-red-500 text-xl">●</div>
+          )}
+        </div>
+      </div>
+      <div className="mt-8 w-full">
+        <MicLevels micAmplitude={micAmplitude} micThreshold={micThreshold} isRecordingState={stateRef.current.matches('RECORDING')} updateMicThreshold={updateMicThreshold} />
+      </div>
       <a
         className="items-center flex justify-center mt-auto"
         href="https://modal.com"
         target="_blank"
         rel="noopener noreferrer"
       >
-        <footer className="flex flex-row items-center w-42 p-1 mb-6 rounded shadow-lg">
+        <footer className="flex items-center w-42 p-1 mb-6 rounded border">
           <span className="p-1 text-md">
             <strong>built with</strong>
           </span>
-          <img className="h-12 w-24" src="./modal-logo.svg"></img>
+          <img className="h-12 w-24" src="./modal-logo.svg" alt="Modal logo" />
         </footer>
       </a>
-    </nav>
+    </div>
   );
 }
 
-function BotIcon() {
+const MicLevels = ({ micAmplitude, micThreshold, isRecordingState, updateMicThreshold }) => {
+  const maxAmplitude = 0.2; // for scaling
+
+  return (
+    <div className="w-full max-w-md mx-auto space-y-2">
+      <h1  className="text-xl">Mic Settings</h1>
+      <label className="block text-sm font-medium text-gray-300">Mic Level</label>
+      <div className={`relative h-4 rounded-full overflow-hidden` + (isRecordingState ? ' bg-primary' : ' bg-zinc-600')}>
+        <div 
+          className={`absolute top-0 left-0 h-full transition-all duration-100 ease-out bg-zinc-200`}
+          style={{ width: `${(micAmplitude / maxAmplitude) * 100}%` }}
+        ></div>
+        <div 
+          className="absolute top-0 h-full w-0.5 bg-white"
+          style={{ left: `${(micThreshold / maxAmplitude) * 100}%` }}
+        ></div>
+      </div>
+      
+      <div className="space-y-2">
+        <label htmlFor="threshold-slider" className="block text-sm font-medium text-gray-300">
+          Threshold:
+        </label>
+        <input
+          type="range"
+          id="threshold-slider"
+          min={0}
+          max={maxAmplitude}
+          step={0.001}
+          value={micThreshold}
+          onChange={(e) => updateMicThreshold(Number(e.target.value))}
+          className="w-full h-2 bg-zinc-600 rounded-lg appearance-none cursor-pointer"
+        />
+      </div>
+    </div>
+  );
+}
+
+const BotIcon = () => {
   return (
     <svg
       className="w-full h-full"
@@ -198,7 +488,7 @@ function BotIcon() {
   );
 }
 
-function UserIcon() {
+const UserIcon = () => {
   return (
     <svg
       className="w-full h-full"
@@ -208,486 +498,6 @@ function UserIcon() {
       {/*! Font Awesome Pro 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc.*/}
       <path d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512H418.3c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304H178.3z" />
     </svg>
-  );
-}
-
-function FaceIcon() {
-  return (
-    <svg
-      className="w-full h-full"
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 512 512"
-    >
-      {/*! Font Awesome Pro 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc.*/}
-      <path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM164.1 325.5C182 346.2 212.6 368 256 368s74-21.8 91.9-42.5c5.8-6.7 15.9-7.4 22.6-1.6s7.4 15.9 1.6 22.6C349.8 372.1 311.1 400 256 400s-93.8-27.9-116.1-53.5c-5.8-6.7-5.1-16.8 1.6-22.6s16.8-5.1 22.6 1.6zM144.4 208a32 32 0 1 1 64 0 32 32 0 1 1 -64 0zm192-32a32 32 0 1 1 0 64 32 32 0 1 1 0-64z" />
-    </svg>
-  );
-}
-
-function MicOnIcon() {
-  return (
-    <svg
-      className="w-full h-full"
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 640 512"
-    >
-      {/*! Font Awesome Pro 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc.*/}
-      <path
-        d="M192 0C139 0 96 43 96 96V256c0 53 43 96 96 96s96-43 96-96V96c0-53-43-96-96-96zM64 216c0-13.3-10.7-24-24-24s-24 10.7-24 24v40c0 89.1 66.2 162.7 152 174.4V464H120c-13.3 0-24 10.7-24 24s10.7 24 24 24h72 72c13.3 0 24-10.7 24-24s-10.7-24-24-24H216V430.4c85.8-11.7 152-85.3 152-174.4V216c0-13.3-10.7-24-24-24s-24 10.7-24 24v40c0 70.7-57.3 128-128 128s-128-57.3-128-128V216z"
-        transform="translate(128, 0)"
-      />
-    </svg>
-  );
-}
-
-function MicOffIcon() {
-  return (
-    <svg
-      className="w-full h-full"
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 640 512"
-    >
-      {/*! Font Awesome Pro 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc.*/}
-      <path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L472.1 344.7c15.2-26 23.9-56.3 23.9-88.7V216c0-13.3-10.7-24-24-24s-24 10.7-24 24v40c0 21.2-5.1 41.1-14.2 58.7L416 300.8V96c0-53-43-96-96-96s-96 43-96 96v54.3L38.8 5.1zM344 430.4c20.4-2.8 39.7-9.1 57.3-18.2l-43.1-33.9C346.1 382 333.3 384 320 384c-70.7 0-128-57.3-128-128v-8.7L144.7 210c-.5 1.9-.7 3.9-.7 6v40c0 89.1 66.2 162.7 152 174.4V464H248c-13.3 0-24 10.7-24 24s10.7 24 24 24h72 72c13.3 0 24-10.7 24-24s-10.7-24-24-24H344V430.4z" />
-    </svg>
-  );
-}
-
-function TalkingSpinner({ isUser }) {
-  return (
-    <div className={"flex items-center justify-center"}>
-      <div
-        className={
-          "talking [&>span]:" + (isUser ? "bg-yellow-500" : "bg-primary")
-        }
-      >
-        {" "}
-        <span /> <span /> <span />{" "}
-      </div>
-    </div>
-  );
-}
-
-function LoadingSpinner() {
-  return (
-    <div className="scale-[0.2] w-6 h-6 flex items-center justify-center">
-      <div className="lds-spinner [&>div:after]:bg-zinc-200">
-        {[...Array(12)].map((_, i) => (
-          <div key={i}></div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ChatMessage({ text, isUser, indicator }) {
-  return (
-    <div className="w-full">
-      <div className="text-base gap-4 p-4 flex m-auto">
-        <div className="flex flex-col gap-2">
-          <div
-            className={
-              "flex items-center justify-center w-8 h-8 min-w-8 mih-h-8" +
-              (isUser ? " fill-yellow-500" : " fill-primary")
-            }
-          >
-            {isUser ? <UserIcon /> : <BotIcon />}
-          </div>
-          {indicator == INDICATOR_TYPE.TALKING && (
-            <TalkingSpinner isUser={isUser} />
-          )}
-          {indicator == INDICATOR_TYPE.GENERATING && <LoadingSpinner />}
-        </div>
-        <div>
-          <div
-            className={
-              "whitespace-pre-wrap rounded-[16px] px-3 py-1.5 max-w-[600px] bg-zinc-800 border " +
-              (!text
-                ? " pulse text-sm text-zinc-300 border-gray-600"
-                : isUser
-                ? " text-zinc-100 border-yellow-500"
-                : " text-zinc-100 border-primary")
-            }
-          >
-            {text ||
-              (isUser
-                ? "Speak into your microphone to talk to the bot..."
-                : "Bot is typing...")}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-class PlayQueue {
-  constructor(audioContext, onChange) {
-    this.call_ids = [];
-    this.audioContext = audioContext;
-    this._onChange = onChange;
-    this._isProcessing = false;
-    this._indicators = {};
-  }
-
-  async add(item) {
-    this.call_ids.push(item);
-    this.play();
-  }
-
-  _updateState(idx, indicator) {
-    this._indicators[idx] = indicator;
-    this._onChange(this._indicators);
-  }
-
-  _onEnd(idx) {
-    this._updateState(idx, INDICATOR_TYPE.IDLE);
-    this._isProcessing = false;
-    this.play();
-  }
-
-  async play() {
-    if (this._isProcessing || this.call_ids.length === 0) {
-      return;
-    }
-
-    this._isProcessing = true;
-
-    const [payload, idx, isTts] = this.call_ids.shift();
-    this._updateState(idx, INDICATOR_TYPE.GENERATING);
-
-    if (!isTts) {
-      const audio = new SpeechSynthesisUtterance(payload);
-      audio.onend = () => this._onEnd(idx);
-      this._updateState(idx, INDICATOR_TYPE.TALKING);
-      window.speechSynthesis.speak(audio);
-      return;
-    }
-
-    const call_id = payload;
-    console.log("Fetching audio for call", call_id, idx);
-
-    let response;
-    let success = false;
-    while (true) {
-      response = await fetch(`/audio/${call_id}`);
-      if (response.status === 202) {
-        continue;
-      } else if (response.status === 204) {
-        console.error("No audio found for call: " + call_id);
-        break;
-      } else if (!response.ok) {
-        console.error("Error occurred fetching audio: " + response.status);
-      } else {
-        success = true;
-        break;
-      }
-    }
-
-    if (!success) {
-      this._onEnd(idx);
-      return;
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-
-    const source = this.audioContext.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(this.audioContext.destination);
-
-    source.onended = () => this._onEnd(idx);
-
-    this._updateState(idx, INDICATOR_TYPE.TALKING);
-    source.start();
-  }
-
-  clear() {
-    for (const [call_id, _, isTts] of this.call_ids) {
-      if (isTts) {
-        fetch(`/audio/${call_id}`, { method: "DELETE" });
-      }
-    }
-    this.call_ids = [];
-  }
-}
-
-async function fetchTranscript(buffer) {
-  const blob = new Blob([buffer], { type: "audio/float32" });
-
-  const response = await fetch("/transcribe", {
-    method: "POST",
-    body: blob,
-    headers: { "Content-Type": "audio/float32" },
-  });
-
-  if (!response.ok) {
-    console.error("Error occurred during transcription: " + response.status);
-  }
-
-  return await response.json();
-}
-
-async function* fetchGeneration(noop, input, history, isTortoiseOn) {
-  const body = noop
-    ? { noop: true, tts: isTortoiseOn }
-    : { input, history, tts: isTortoiseOn };
-
-  const response = await fetch("/generate", {
-    method: "POST",
-    body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json" },
-  });
-
-  if (!response.ok) {
-    console.error("Error occurred during submission: " + response.status);
-  }
-
-  if (noop) {
-    return;
-  }
-
-  const readableStream = response.body;
-  const decoder = new TextDecoder();
-
-  const reader = readableStream.getReader();
-
-  while (true) {
-    const { done, value } = await reader.read();
-
-    if (done) {
-      break;
-    }
-
-    for (let message of decoder.decode(value).split("\x1e")) {
-      if (message.length === 0) {
-        continue;
-      }
-
-      const { type, value: payload } = JSON.parse(message);
-
-      yield { type, payload };
-    }
-  }
-
-  reader.releaseLock();
-}
-
-function App() {
-  const [history, setHistory] = useState([]);
-  const [fullMessage, setFullMessage] = useState(INITIAL_MESSAGE);
-  const [typedMessage, setTypedMessage] = useState("");
-  const [model, setModel] = useState(MODELS[0].id);
-  const [botIndicators, setBotIndicators] = useState({});
-  const [state, send, service] = useMachine(chatMachine);
-  const [isMicOn, setIsMicOn] = useState(true);
-  const [isTortoiseOn, setIsTortoiseOn] = useState(false);
-  const recorderNodeRef = useRef(null);
-  const playQueueRef = useRef(null);
-
-  useEffect(() => {
-    const subscription = service.subscribe((state, event) => {
-      console.log("Transitioned to state:", state.value, state.context);
-
-      if (event && event.type == "TRANSCRIPT_RECVD") {
-        setFullMessage(
-          (m) => m + (m ? event.transcript : event.transcript.trimStart())
-        );
-      }
-    });
-
-    return subscription.unsubscribe;
-  }, [service]);
-
-  const generateResponse = useCallback(
-    async (noop, input = "") => {
-      if (!noop) {
-        recorderNodeRef.current.stop();
-      }
-
-      console.log("Generating response", input, history);
-
-      let firstAudioRecvd = false;
-      for await (let { type, payload } of fetchGeneration(
-        noop,
-        input,
-        history.slice(1),
-        isTortoiseOn
-      )) {
-        if (type === "text") {
-          setFullMessage((m) => m + payload);
-        } else if (type === "audio") {
-          if (!firstAudioRecvd && CANCEL_OLD_AUDIO) {
-            playQueueRef.current.clear();
-            firstAudioRecvd = true;
-          }
-          playQueueRef.current.add([payload, history.length + 1, true]);
-        } else if (type === "sentence") {
-          playQueueRef.current.add([payload, history.length + 1, false]);
-        }
-      }
-
-      if (!isTortoiseOn && playQueueRef.current) {
-        while (
-          playQueueRef.current.call_ids.length ||
-          playQueueRef.current._isProcessing
-        ) {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-      }
-      console.log("Finished generating response");
-
-      if (!noop) {
-        recorderNodeRef.current.start();
-        send("GENERATION_DONE");
-      }
-    },
-    [history, isTortoiseOn]
-  );
-
-  useEffect(() => {
-    const transition = state.context.messages > history.length + 1;
-
-    if (transition && state.matches("botGenerating")) {
-      generateResponse(/* noop = */ false, fullMessage);
-    }
-
-    if (transition) {
-      setHistory((h) => [...h, fullMessage]);
-      setFullMessage("");
-      setTypedMessage("");
-    }
-  }, [state, history, fullMessage]);
-
-  const onSegmentRecv = useCallback(
-    async (buffer) => {
-      if (buffer.length) {
-        send("SEGMENT_RECVD");
-      }
-      // TODO: these can get reordered
-      const data = await fetchTranscript(buffer);
-      if (buffer.length) {
-        send({ type: "TRANSCRIPT_RECVD", transcript: data });
-      }
-    },
-    [history]
-  );
-
-  async function onMount() {
-    // Warm up GPU functions.
-    onSegmentRecv(new Float32Array());
-    generateResponse(/* noop = */ true);
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-    const context = new AudioContext();
-
-    const source = context.createMediaStreamSource(stream);
-
-    await context.audioWorklet.addModule("processor.js");
-    const recorderNode = new RecorderNode(
-      context,
-      onSegmentRecv,
-      () => send("SILENCE"),
-      () => send("SOUND")
-    );
-    recorderNodeRef.current = recorderNode;
-
-    source.connect(recorderNode);
-    recorderNode.connect(context.destination);
-
-    playQueueRef.current = new PlayQueue(context, setBotIndicators);
-  }
-
-  useEffect(() => {
-    onMount();
-  }, []);
-
-  const tick = useCallback(() => {
-    if (!recorderNodeRef.current) {
-      return;
-    }
-
-    if (typedMessage.length < fullMessage.length) {
-      const n = 1; // Math.round(Math.random() * 3) + 3;
-      setTypedMessage(fullMessage.substring(0, typedMessage.length + n));
-
-      if (typedMessage.length + n == fullMessage.length) {
-        send("TYPING_DONE");
-      }
-    }
-  }, [typedMessage, fullMessage]);
-
-  useEffect(() => {
-    const intervalId = setInterval(tick, 20);
-    return () => clearInterval(intervalId);
-  }, [tick]);
-
-  const onModelSelect = (id) => {
-    setModel(id);
-  };
-
-  useEffect(() => {
-    if (recorderNodeRef.current) {
-      console.log("Mic", isMicOn);
-
-      if (isMicOn) {
-        recorderNodeRef.current.start();
-      } else {
-        recorderNodeRef.current.stop();
-      }
-    }
-  }, [isMicOn]);
-
-  useEffect(() => {
-    if (playQueueRef.current && !isTortoiseOn) {
-      console.log("Canceling future audio calls");
-      playQueueRef.current.clear();
-    }
-  }, [isTortoiseOn]);
-
-  const isUserLast = history.length % 2 == 1;
-  let userIndicator = INDICATOR_TYPE.IDLE;
-
-  if (isUserLast) {
-    userIndicator = state.matches("userTalking")
-      ? INDICATOR_TYPE.TALKING
-      : INDICATOR_TYPE.SILENT;
-  }
-
-  useEffect(() => {
-    console.log("Bot indicator changed", botIndicators);
-  }, [botIndicators]);
-
-  return (
-    <div className="min-w-full min-h-screen screen">
-      <div className="w-full h-screen flex">
-        <Sidebar
-          selected={model}
-          onModelSelect={onModelSelect}
-          isMicOn={isMicOn}
-          isTortoiseOn={isTortoiseOn}
-          setIsMicOn={setIsMicOn}
-          setIsTortoiseOn={setIsTortoiseOn}
-        />
-        <main className="bg-zinc-800 w-full flex flex-col items-center gap-3 pt-6 overflow-auto">
-          {history.map((msg, i) => (
-            <ChatMessage
-              key={i}
-              text={msg}
-              isUser={i % 2 == 1}
-              indicator={i % 2 == 0 && botIndicators[i]}
-            />
-          ))}
-          <ChatMessage
-            text={typedMessage}
-            isUser={isUserLast}
-            indicator={
-              isUserLast ? userIndicator : botIndicators[history.length]
-            }
-          />
-        </main>
-      </div>
-    </div>
   );
 }
 

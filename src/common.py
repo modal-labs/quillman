@@ -1,3 +1,3 @@
-from modal import Stub
+from modal import App, Secret
 
-stub = Stub(name="quillman")
+app = App(name="quillman")
