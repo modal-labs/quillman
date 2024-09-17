@@ -9,7 +9,7 @@ Follow these steps to optain pull access:
 - Scroll through the "LLAMA 3.1 COMMUNITY LICENSE AGREEMENT"
 - Fill out the form and submit
 - Acquire a HuggingFace API token from https://huggingface.co/settings/tokens
-- Set that token as a Modal secret with the name "huggingface-key" at https://modal.com/secrets, using the variable name "HF_TOKEN"
+- Set that token as a Modal secret with the name "my-huggingface-secret" at https://modal.com/secrets, using the variable name "HF_TOKEN"
 
 Access is usually granted within an hour or two.
 
@@ -66,7 +66,7 @@ llama_image = (
     container_idle_timeout=60 * 10,
     allow_concurrent_inputs=10,
     image=llama_image,
-    secrets=[modal.Secret.from_name("huggingface-key")],
+    secrets=[modal.Secret.from_name("my-huggingface-secret")],
 )
 class Llama:
     @modal.build()
