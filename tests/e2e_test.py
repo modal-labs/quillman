@@ -4,8 +4,6 @@ mimicking the actions a user would take on the frontend.
 
 It is intended to call to a dev endpoint, set up through `modal serve src.app`.
 """
-
-from doctest import debug
 import time
 import asyncio
 import websockets

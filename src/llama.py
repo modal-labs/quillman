@@ -15,12 +15,9 @@ Access is usually granted within an hour or two.
 
 We use the [VLLM](https://github.com/vllm-project/vllm) library to run the model.
 """
-import json
-from textwrap import fill
+
 import time
-from pathlib import Path
 import os
-import re
 
 import modal
 
@@ -153,7 +150,7 @@ class Llama:
         # Add the current user input
         prompt += f"Human: {input}\n"
         prompt += "Assistant: "
-        
+
         request_id = random_uuid()
         print(f"Request {request_id} generating with prompt:{prompt}")
         result_stream = self.engine.generate(

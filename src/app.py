@@ -2,7 +2,6 @@
 Main web application service. Serves the static frontend as well as
 API routes for transcription, language model generation and text-to-speech.
 """
-from doctest import debug
 from pathlib import Path
 import modal
 
@@ -94,11 +93,11 @@ def web():
 
         Response Stages:
         4: Pre-synthesized filler audio is selected and sent to the client, to shorten the initial silence.
-        4: LLM response generation yields completed sentences. Each sentence is sent to TTS.
-        5: TTS yields a sentence at a time. Each sentence is sent back to the client.
+        5: LLM response generation yields completed sentences. Each sentence is sent to TTS.
+        6: TTS yields a sentence at a time. Each sentence is sent back to the client.
             send: { "type": "text", "value": <text> } -> <text> is a text sentence from the LLM
             send: { "type": "wav", "value": <base64 encoded wav bytes> } -> Wav bytes
-        6: Once all TTS chunks are sent, the websocket is closed.
+        7: Once all TTS chunks are sent, the websocket is closed.
         '''
         await websocket.accept()
 
