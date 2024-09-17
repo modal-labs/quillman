@@ -71,16 +71,6 @@ llama_image = (
 class Llama:
     @modal.build()
     def download_model(self):
-        # pip freeze
-        try: 
-            from pip._internal.operations import freeze
-        except ImportError: # pip < 10.0
-            from pip.operations import freeze
-
-        pkgs = freeze.freeze()
-        for pkg in pkgs: 
-            print(pkg)
-
         from huggingface_hub import snapshot_download, login
         from transformers.utils import move_cache
         login(os.environ["HF_TOKEN"])
