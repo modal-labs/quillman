@@ -16,6 +16,7 @@ Access is usually granted within an hour or two.
 We use the [VLLM](https://github.com/vllm-project/vllm) library to run the model.
 """
 import json
+from textwrap import fill
 import time
 from pathlib import Path
 import os
@@ -137,9 +138,6 @@ class Llama:
         # prepend system message to history
         history.insert(0, { "role": "system", "content": system_prompt })
 
-        # append current user input to history
-        history.append({ "role": "user", "content": input })
-
         # Convert chat history to a single string
         prompt = ""
         for message in history:
@@ -155,7 +153,7 @@ class Llama:
         # Add the current user input
         prompt += f"Human: {input}\n"
         prompt += "Assistant: "
-
+        
         request_id = random_uuid()
         print(f"Request {request_id} generating with prompt:{prompt}")
         result_stream = self.engine.generate(
@@ -189,7 +187,6 @@ class Llama:
         # Yield any remaining content in the buffer
         if buffer.strip():
             yield buffer.strip()
-
 
 @app.local_entrypoint()
 def main(prompt: str = "Who was Emperor Norton I, and what was his significance in San Francisco's history?"):
