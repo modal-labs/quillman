@@ -10,6 +10,7 @@ import websockets
 import os
 import requests
 import subprocess
+import sys
 import base64
 
 
@@ -54,7 +55,7 @@ async def main():
         print("Prewarm request successful")
     except requests.exceptions.RequestException as e:
         print(f"Prewarm request failed: {e}")
-        return
+        return 1
 
     # Step 2: WebSocket connection to /pipeline endpoint
     try:
@@ -123,10 +124,10 @@ async def main():
                     i += 1
 
     except websockets.exceptions.WebSocketException:
-        pass
+        return 1
 
     print(f"Done, output audios saved to /tmp/output_{i}.wav")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))
