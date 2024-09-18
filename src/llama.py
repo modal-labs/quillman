@@ -1,17 +1,7 @@
 """
-Text generation service based on the Llama 3.1 8B Instruct model.
+Text generation service based on the Llama 3.1 8B Instruct model by Meta.
 
-The model is based on the [Meta-Llama](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct) model, which is licensed under the Llama3.1 license.
-
-Pulling the model weights from HuggingFace requires Meta org approval.
-Follow these steps to optain pull access:
-- Go to https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct
-- Scroll through the "LLAMA 3.1 COMMUNITY LICENSE AGREEMENT"
-- Fill out the form and submit
-- Acquire a HuggingFace API token from https://huggingface.co/settings/tokens
-- Set that token as a Modal secret with the name "my-huggingface-secret" at https://modal.com/secrets, using the variable name "HF_TOKEN"
-
-Access is usually granted within an hour or two.
+The model is an [FP8 quantized version by Neural Magic](https://huggingface.co/neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8), which is licensed under the Llama3.1 license.
 
 We use the [VLLM](https://github.com/vllm-project/vllm) library to run the model.
 """
@@ -23,7 +13,6 @@ import modal
 from .common import app
 
 MODEL_DIR = "/model"
-
 MODEL_NAME = "neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8"
 GPU_CONFIG = modal.gpu.A100(size="40GB", count=1)
 
@@ -45,15 +34,14 @@ llama_image = (
     container_idle_timeout=60 * 10,
     allow_concurrent_inputs=10,
     image=llama_image,
-    secrets=[modal.Secret.from_name("my-huggingface-secret")],
 )
 class Llama:
     @modal.build()
     def download_model(self):
         from huggingface_hub import snapshot_download, login
         from transformers.utils import move_cache
-        login(os.environ["HF_TOKEN"])
 
+        print("Downloading model, this may take a few minutes...")
         os.makedirs(MODEL_DIR, exist_ok=True)
         snapshot_download(
             MODEL_NAME,
