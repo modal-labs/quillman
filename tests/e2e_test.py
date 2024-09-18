@@ -11,6 +11,7 @@ import requests
 import subprocess
 import sys
 import base64
+import wave
 import json
 from pathlib import Path
 import wave
@@ -128,7 +129,7 @@ async def main():
     except websockets.exceptions.WebSocketException:
         pass
 
-    print(f"Done, output audios saved to /tmp/output_{i}.wav")
+    print("Done, output audios saved to /tmp/output_*.wav")
 
 
 if __name__ == "__main__":
