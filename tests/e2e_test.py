@@ -51,7 +51,7 @@ async def main():
     print("Prewarming models...")
     for i in range(5):  # retry up to 5 times
         try:
-            response = requests.get("https://example.com/prewarm")
+            response = requests.get(f"https://{endpoint}/prewarm")
             response.raise_for_status()
             print("Prewarm request successful")
             break
