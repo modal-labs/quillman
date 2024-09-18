@@ -15,7 +15,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_MODAL_LABS_TOKEN_SECRET }}
       MODAL_ENVIRONMENT: main
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
       - uses: ./.github/actions/setup
