@@ -100,7 +100,7 @@ class Llama:
             repetition_penalty=1.1
         )
         request_id = random_uuid()
-
+        print(f"Request {request_id} generating with prompt:{prompt}")
         result_stream = self.engine.generate(prompts, sampling_params, request_id)
         index = 0
         buffer = ""
