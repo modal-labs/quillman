@@ -9,7 +9,7 @@ Follow these steps to optain pull access:
 - Scroll through the "LLAMA 3.1 COMMUNITY LICENSE AGREEMENT"
 - Fill out the form and submit
 - Acquire a HuggingFace API token from https://huggingface.co/settings/tokens
-- Set that token as a Modal secret with the name "huggingface-key" at https://modal.com/secrets, using the variable name "HF_TOKEN"
+- Set that token as a Modal secret with the name "my-huggingface-secret" at https://modal.com/secrets, using the variable name "HF_TOKEN"
 
 Access is usually granted within an hour or two.
 
@@ -29,23 +29,6 @@ MODEL_DIR = "/model"
 MODEL_NAME = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 GPU_CONFIG = modal.gpu.A100(size="40GB", count=1)
 
-def download_model_to_image(model_dir, model_name):
-    from huggingface_hub import snapshot_download, login
-    from transformers.utils import move_cache
-    print(os.environ)
-
-    login(os.environ["HF_TOKEN"])
-
-    os.makedirs(model_dir, exist_ok=True)
-
-    snapshot_download(
-        model_name,
-        local_dir=model_dir,
-        ignore_patterns=["*.pt", "*.bin"],  # Using safetensors
-    )
-    move_cache()
-
-
 llama_image = (
     modal.Image.debian_slim(python_version="3.10")
     .pip_install(
@@ -64,21 +47,11 @@ llama_image = (
     container_idle_timeout=60 * 10,
     allow_concurrent_inputs=10,
     image=llama_image,
-    secrets=[modal.Secret.from_name("huggingface-key")],
+    secrets=[modal.Secret.from_name("my-huggingface-secret")],
 )
 class Llama:
     @modal.build()
     def download_model(self):
-        # pip freeze
-        try: 
-            from pip._internal.operations import freeze
-        except ImportError: # pip < 10.0
-            from pip.operations import freeze
-
-        pkgs = freeze.freeze()
-        for pkg in pkgs: 
-            print(pkg)
-
         from huggingface_hub import snapshot_download, login
         from transformers.utils import move_cache
         login(os.environ["HF_TOKEN"])

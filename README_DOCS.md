@@ -8,8 +8,6 @@ We’ve enjoyed playing around with QuiLLMan enough at Modal HQ that we decided 
 
 Everything — the React frontend, the backend API, the LLMs — is deployed serverlessly, allowing it to automatically scale and ensuring you only pay for the compute you use. Read on to see how Modal makes this easy!
 
-[TODO: GIF HERE]
-
 This post provides a high-level walkthrough of the [repo](https://github.com/modal-labs/quillman). We’re looking to add more models and features to this as time goes on, and contributions are welcome!
 
 ## **Code overview**
@@ -46,7 +44,7 @@ The chain starts with a base Debian container installs `python_version` 3.10, 
 
 We use [VLLM](https://github.com/vllm-project/vllm), a high-performance open-source library for running large language models on CPUs and GPUs, to run the Llama model. This server scales to handle multiple concurrent requests, keeping costs down for our LLM module.
 
-The models we use define a [`generate`](TODO: permalink to spot in code) function that constructs an input to our language model from a prompt template, the conversation history, and the latest text from the user. Then, it `yield`s (streams) words as they are produced. Remote Python generators work out-of-the-box in Modal, so building streaming interactions is easy.
+The models we use define a `generate` function that constructs an input to our language model from a prompt template, the conversation history, and the latest text from the user. Then, it `yield`s (streams) words as they are produced. Remote Python generators work out-of-the-box in Modal, so building streaming interactions is easy.
 
 Although we’re going to call this model from our backend API, it’s useful to test it directly as well. To do this, we define a [`local_entrypoint`](https://modal.com/docs/guide/apps#entrypoints-for-ephemeral-apps):
 
@@ -57,8 +55,6 @@ Copy
 Now, we can [`run`](https://modal.com/docs/guide/apps#ephemeral-apps) the model with a prompt of our choice from the terminal:
 
 `modal run -q src.llama --prompt "How do antihistamines work?"`
-
-TODO: GIF HERE
 
 ### **Transcription**
 
