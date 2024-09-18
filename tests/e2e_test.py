@@ -8,25 +8,22 @@ import time
 import asyncio
 import websockets
 import os
-from os import path
 import requests
+import subprocess
 import base64
 
-# look up user's active modal profile to get serve endpoint
-import toml
 
-with open(path.join(path.expanduser("~"), ".modal.toml")) as f:
-    current = toml.load(f)
-    for name, item in current.items():
-        if item.get("active", False):
-            endpoint = f"{name}--quillman-web-dev.modal.run"
-
-import os
 import json
 from pathlib import Path
 
+workspace = subprocess.run(
+    ["modal", "profile", "current"], check=True, capture_output=True, text=True
+).stdout.splitlines()[0]
+
+endpoint = f"{workspace}--quillman-web-dev.modal.run"
+
 # We have three sample audio files in the test-audio folder that we'll transcribe
-files = os.listdir("test-audio")
+files = os.listdir(Path(__file__).parent / "test-audio")
 files.sort()
 
 # we're simulating a user speaking into a microphone
@@ -35,7 +32,7 @@ user_finish_time = None
 
 def user_input_generator():
     for wav in files:
-        wav = "test-audio" / Path(wav)
+        wav = Path(__file__).parent / "test-audio" / wav
         print(wav)
         with open(wav, "rb") as f:
             yield f.read()
@@ -125,10 +122,10 @@ async def main():
 
                     i += 1
 
-    except websockets.exceptions.WebSocketException as e:
+    except websockets.exceptions.WebSocketException:
         pass
 
-    print("Done, output audios saved to /tmp/output_{i}.wav")
+    print(f"Done, output audios saved to /tmp/output_{i}.wav")
 
 
 if __name__ == "__main__":
