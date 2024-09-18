@@ -15,11 +15,8 @@ Access is usually granted within an hour or two.
 
 We use the [VLLM](https://github.com/vllm-project/vllm) library to run the model.
 """
-import json
 import time
-from pathlib import Path
 import os
-import re
 
 import modal
 
@@ -27,8 +24,7 @@ from .common import app
 
 MODEL_DIR = "/model"
 
-# Llama 3.1 requires an org approval, usually granted within a few hours
-MODEL_NAME = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+MODEL_NAME = "neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8"
 GPU_CONFIG = modal.gpu.A100(size="40GB", count=1)
 
 llama_image = (
@@ -70,6 +66,7 @@ class Llama:
     def start_engine(self):
         from vllm.engine.arg_utils import AsyncEngineArgs
         from vllm.engine.async_llm_engine import AsyncLLMEngine
+        from transformers import AutoTokenizer
         t0 = time.time()
 
         engine_args = AsyncEngineArgs(
@@ -81,6 +78,8 @@ class Llama:
             disable_log_requests=True,
         )
 
+        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
         # this can take some time!
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
         print(f"VLLM engine started in {time.time() - t0:.2f}s")
@@ -91,62 +90,48 @@ class Llama:
         pass
 
     @modal.method(is_generator=True)
-    async def generate(self, input, history=[]):
+    async def generate(self, prompt, history=[]):
         from vllm import SamplingParams
         from vllm.utils import random_uuid
 
-        stop_token = "<|END|>"
-        stop_tokens = [stop_token, "Human:"] # prevent model from generating a response to itself
-        system_prompt = f"You are a helpful AI assistant. Respond to the human to the best of your ability. Keep it brief.. When you have completed your response, end it with the token {stop_token}. For example: Human: What's the capital of France? Assistant: The capital of France is Paris.{stop_token}"
+        messages = [
+            {"role": "system", "content": f"You are a helpful AI assistant. Respond to the human to the best of your ability. Keep it brief."},
+        ]
 
+        for history_entry in history:
+            # history follows "role" + "content" format so can be used directly
+            messages.append(history_entry)
+
+        messages.append({"role": "user", "content": prompt})
+
+        prompts = self.tokenizer.apply_chat_template(messages, tokenize=False)
         sampling_params = SamplingParams(
-            temperature=0.75,
-            max_tokens=128,
-            repetition_penalty=1.1,
-            stop=stop_tokens,
-            include_stop_str_in_output=False,
+            temperature=0.75, 
+            top_p=0.9, 
+            max_tokens=256, 
+            repetition_penalty=1.1
         )
-
-        # prepend system message to history
-        history.insert(0, { "role": "system", "content": system_prompt })
-
-        # append current user input to history
-        history.append({ "role": "user", "content": input })
-
-        # Convert chat history to a single string
-        prompt = ""
-        for message in history:
-            role = message["role"]
-            content = message["content"]
-            if role == "system":
-                prompt += f"System: {content}\n"
-            elif role == "user":
-                prompt += f"Human: {content}\n"
-            elif role == "assistant":
-                prompt += f"Assistant: {content}\n"
-
-        # Add the current user input
-        prompt += f"Human: {input}\n"
-        prompt += "Assistant: "
-
         request_id = random_uuid()
-        print(f"Request {request_id} generating with prompt:{prompt}")
-        result_stream = self.engine.generate(
-            prompt,
-            sampling_params,
-            request_id,
-        )
 
+        result_stream = self.engine.generate(prompts, sampling_params, request_id)
         index = 0
         buffer = ""
+        header_complete = False
         async for output in result_stream:
             if output.outputs[0].text and "\ufffd" == output.outputs[0].text[-1]:
                 # Skip incomplete unicode characters
                 continue
 
             new_text = output.outputs[0].text[index:]
-            buffer += new_text
             index = len(output.outputs[0].text)
+
+            # ignore leading <|start_header_id|>assistant<|end_header_id|>
+            if not header_complete:
+                if new_text == "<|end_header_id|>":
+                    header_complete = True
+                continue
+
+            buffer += new_text
 
             # Yield any complete words in the buffer
             while buffer:
@@ -162,7 +147,6 @@ class Llama:
         # Yield any remaining content in the buffer
         if buffer.strip():
             yield buffer.strip()
-
 
 @app.local_entrypoint()
 def main(prompt: str = "Who was Emperor Norton I, and what was his significance in San Francisco's history?"):
