@@ -7,7 +7,6 @@ We use the [VLLM](https://github.com/vllm-project/vllm) library to run the model
 """
 import time
 import os
-
 import modal
 
 from .common import app
@@ -38,7 +37,7 @@ llama_image = (
 class Llama:
     @modal.build()
     def download_model(self):
-        from huggingface_hub import snapshot_download, login
+        from huggingface_hub import snapshot_download
         from transformers.utils import move_cache
 
         print("Downloading model, this may take a few minutes...")

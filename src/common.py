@@ -1,3 +1,3 @@
-from modal import App, Secret
+from modal import App
 
 app = App(name="quillman")
