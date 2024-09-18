@@ -130,7 +130,7 @@ async def main():
                     i += 1
 
     except websockets.exceptions.WebSocketException:
-        return 1
+        pass
 
     print(f"Done, output audios saved to /tmp/output_{i}.wav")
 
