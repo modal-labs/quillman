@@ -12,8 +12,7 @@ import requests
 import subprocess
 import sys
 import base64
-
-
+import wave
 import json
 from pathlib import Path
 
@@ -29,12 +28,15 @@ files.sort()
 
 # we're simulating a user speaking into a microphone
 user_finish_time = None
-
-
 def user_input_generator():
     for wav in files:
         wav = Path(__file__).parent / "test-audio" / wav
-        print(wav)
+        
+        # sleep for duration of wav file to simulate user speaking
+        duration = wave.open(wav.as_posix(), "rb").getnframes() / wave.open(wav.as_posix(), "rb").getframerate()
+        print(f"Simulating user speaking for {duration:.2f} seconds")
+        time.sleep(duration)
+
         with open(wav, "rb") as f:
             yield f.read()
 
@@ -132,7 +134,7 @@ async def main():
     except websockets.exceptions.WebSocketException:
         pass
 
-    print(f"Done, output audios saved to /tmp/output_{i}.wav")
+    print("Done, output audios saved to /tmp/output_*.wav")
 
 
 if __name__ == "__main__":
