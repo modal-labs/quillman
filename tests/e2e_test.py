@@ -14,7 +14,6 @@ import base64
 import wave
 import json
 from pathlib import Path
-import wave
 
 workspace = subprocess.run(
     ["modal", "profile", "current"], check=True, capture_output=True, text=True
@@ -105,6 +104,7 @@ async def main():
             if msg["type"] != "transcript":
                 return
             transcript = msg["value"]
+            print(f"Transcript: {transcript}")
 
             i = 0
             # following responses are in alternating pairs: text, wav
