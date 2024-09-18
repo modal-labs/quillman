@@ -1,4 +1,4 @@
-name: Check
+name: e2e
 on:
   push:
     branches:
@@ -8,22 +8,21 @@ on:
     - cron: "17 9 * * *"
 
 jobs:
-  unittest:
-    name: unittest
+  e2etest:
+    name: e2etest
     runs-on: ubuntu-20.04
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_MODAL_LABS_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_MODAL_LABS_TOKEN_SECRET }}
       MODAL_ENVIRONMENT: main
-    strategy:
-      matrix:
-        file: ["src.llama", "src.whisper", "src.xtts"]
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
       - uses: ./.github/actions/setup
-      - name: Run
+      - name: Run testing script
         run: |
+          pip install -r requirements/requirements-dev.txt
           modal token set --token-id $MODAL_TOKEN_ID --token-secret $MODAL_TOKEN_SECRET
-          modal run ${{ matrix.file }}
+          modal serve src.app &
+          python tests/e2e_test.py
