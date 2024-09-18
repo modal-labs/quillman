@@ -14,10 +14,6 @@ import time
 
 from .common import app
 
-DEBUG = True
-    if DEBUG:
-        print(time.time(), *args)
-
 static_path = Path(__file__).with_name("frontend").resolve()
 
 @app.function(
