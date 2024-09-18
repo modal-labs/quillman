@@ -5,6 +5,8 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+  schedule:
+      - cron: "17 9 * * *"
 
 jobs:
   e2etest:
