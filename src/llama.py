@@ -7,6 +7,7 @@ We use the [VLLM](https://github.com/vllm-project/vllm) library to run the model
 """
 import time
 import os
+
 import modal
 
 from .common import app
@@ -26,6 +27,7 @@ llama_image = (
     )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
 )
+
 
 @app.cls(
     gpu=GPU_CONFIG,
@@ -54,6 +56,7 @@ class Llama:
         from vllm.engine.arg_utils import AsyncEngineArgs
         from vllm.engine.async_llm_engine import AsyncLLMEngine
         from transformers import AutoTokenizer
+
         t0 = time.time()
 
         engine_args = AsyncEngineArgs(
@@ -82,7 +85,10 @@ class Llama:
         from vllm.utils import random_uuid
 
         messages = [
-            {"role": "system", "content": f"You are a helpful AI assistant. Respond to the human to the best of your ability. Keep it brief."},
+            {
+                "role": "system",
+                "content": "You are a helpful AI assistant. Respond to the human to the best of your ability. Keep it brief.",
+            },
         ]
 
         for history_entry in history:
@@ -93,10 +99,7 @@ class Llama:
 
         prompts = self.tokenizer.apply_chat_template(messages, tokenize=False)
         sampling_params = SamplingParams(
-            temperature=0.75, 
-            top_p=0.9, 
-            max_tokens=256, 
-            repetition_penalty=1.1
+            temperature=0.75, top_p=0.9, max_tokens=256, repetition_penalty=1.1
         )
         request_id = random_uuid()
         print(f"Request {request_id} generating with prompt:\n{prompts}")
@@ -125,19 +128,21 @@ class Llama:
                 space_index = buffer.find(" ")
                 if space_index == -1:
                     break
-                
-                word = buffer[:space_index + 1]
+
+                word = buffer[: space_index + 1]
                 yield word.strip()
-                
-                buffer = buffer[space_index + 1:]
+
+                buffer = buffer[space_index + 1 :]
 
         # Yield any remaining content in the buffer
         if buffer.strip():
             yield buffer.strip()
 
+
 @app.local_entrypoint()
-def main(prompt: str = "Who was Emperor Norton I, and what was his significance in San Francisco's history?"):
+def main(
+    prompt: str = "Who was Emperor Norton I, and what was his significance in San Francisco's history?",
+):
     model = Llama()
     for token in model.generate.remote_gen(prompt):
         print(token, end=" ")
-

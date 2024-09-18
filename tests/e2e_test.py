@@ -3,7 +3,6 @@ mimicking the actions a user would take on the frontend.
 
 It is intended to call to a dev endpoint, set up through `modal serve src.app`.
 """
-
 import time
 import asyncio
 import websockets
@@ -28,6 +27,7 @@ files.sort()
 
 # we're simulating a user speaking into a microphone
 user_finish_time = None
+
 def user_input_generator():
     for wav in files:
         wav = Path(__file__).parent / "test-audio" / wav
@@ -47,7 +47,6 @@ def user_input_generator():
 
 
 async def main():
-    print("Starting client script")
 
     # Step 1: GET /prewarm endpoint
     print("Prewarming models...")
@@ -79,8 +78,6 @@ async def main():
                     ).encode()
                 )
 
-                print(f"Sent WAV chunk in {time.time() - s}s")
-
             history = [
                 {"role": "user", "content": "Hello, how are you?"},
                 {
@@ -105,7 +102,6 @@ async def main():
             msg_bytes = await websocket.recv()
             msg = json.loads(msg_bytes.decode())
             if msg["type"] != "transcript":
-                print(f"Expected transcript, got {msg['type']}")
                 return
             transcript = msg["value"]
             print(f"Transcript: {transcript}")
@@ -117,7 +113,6 @@ async def main():
                 msg = json.loads(msg_bytes.decode())
                 if msg["type"] == "text":
                     text_response = msg["value"]
-                    print(f"Text response: {text_response}")
 
                 elif msg["type"] == "wav":
                     wav_response = base64.b64decode(msg["value"])
