@@ -8,6 +8,7 @@ The model is based on the [OpenAI Whisper V3](https://huggingface.co/openai/whis
 
 import time
 import modal
+
 from .common import app
 
 cuda_version = "12.4.0"  # should be no greater than host CUDA version

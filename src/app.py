@@ -4,11 +4,11 @@ API routes for transcription, language model generation and text-to-speech.
 """
 from pathlib import Path
 import modal
+import base64
 
 from .xtts import XTTS
 from .whisper import Whisper
 from .llama import Llama
-import base64
 
 from .common import app
 
