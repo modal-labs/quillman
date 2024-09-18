@@ -96,8 +96,6 @@ def web():
         7: Once all TTS chunks are sent, the websocket is closed.
         '''
         await websocket.accept()
-
-        critical_stage_start_time = None
         
         history = []
 
