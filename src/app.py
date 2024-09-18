@@ -25,6 +25,7 @@ static_path = Path(__file__).with_name("frontend").resolve()
     mounts=[modal.Mount.from_local_dir(static_path, remote_path="/assets")],
     container_idle_timeout=600,
     timeout=600,
+    allow_concurrent_inputs=100,
 )
 @modal.asgi_app()
 def web():
@@ -162,7 +163,7 @@ def web():
         debug_print("Server sent transcript to client")
 
         # While we think, send back filler audio
-        sentences = fillers.neighbors.remote(transcript, n=2)
+        sentences = fillers.neighbors.remote(transcript, n=1)
         debug_print(f"Server sending filler audio for {sentences}")
         for sentence in sentences:
             wav_bytesio = fillers.fetch_wav.remote(sentence)
