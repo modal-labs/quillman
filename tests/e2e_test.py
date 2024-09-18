@@ -48,13 +48,19 @@ async def main():
     print("Starting client script")
 
     # Step 1: GET /prewarm endpoint
-    try:
-        print("Prewarming models...")
-        response = requests.get(f"https://{endpoint}/prewarm")
-        response.raise_for_status()
-        print("Prewarm request successful")
-    except requests.exceptions.RequestException as e:
-        print(f"Prewarm request failed: {e}")
+    print("Prewarming models...")
+    for i in range(5):  # retry up to 5 times
+        try:
+            response = requests.get("https://example.com/prewarm")
+            response.raise_for_status()
+            print("Prewarm request successful")
+            break
+        except requests.exceptions.RequestException as e:
+            wait_time = 2**i  # Exponential backoff: 1s, 2s, 4s, 8s, 16s
+            print(f"Request failed ({e}), retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+    else:
+        print("Max retries exceeded")
         return 1
 
     # Step 2: WebSocket connection to /pipeline endpoint
