@@ -1,21 +1,10 @@
 """
-Text generation service based on the Llama 3.1 8B Instruct model.
+Text generation service based on the Llama 3.1 8B Instruct model by Meta.
 
-The model is based on the [Meta-Llama](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct) model, which is licensed under the Llama3.1 license.
-
-Pulling the model weights from HuggingFace requires Meta org approval.
-Follow these steps to optain pull access:
-- Go to https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct
-- Scroll through the "LLAMA 3.1 COMMUNITY LICENSE AGREEMENT"
-- Fill out the form and submit
-- Acquire a HuggingFace API token from https://huggingface.co/settings/tokens
-- Set that token as a Modal secret with the name "my-huggingface-secret" at https://modal.com/secrets, using the variable name "HF_TOKEN"
-
-Access is usually granted within an hour or two.
+The model is an [FP8 quantized version by Neural Magic](https://huggingface.co/neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8), which is licensed under the Llama3.1 license.
 
 We use the [VLLM](https://github.com/vllm-project/vllm) library to run the model.
 """
-
 import time
 import os
 
@@ -24,9 +13,7 @@ import modal
 from .common import app
 
 MODEL_DIR = "/model"
-
-# Llama 3.1 requires an org approval, usually granted within a few hours
-MODEL_NAME = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+MODEL_NAME = "neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8"
 GPU_CONFIG = modal.gpu.A100(size="40GB", count=1)
 
 llama_image = (
@@ -47,15 +34,14 @@ llama_image = (
     container_idle_timeout=60 * 10,
     allow_concurrent_inputs=10,
     image=llama_image,
-    secrets=[modal.Secret.from_name("my-huggingface-secret")],
 )
 class Llama:
     @modal.build()
     def download_model(self):
-        from huggingface_hub import snapshot_download, login
+        from huggingface_hub import snapshot_download
         from transformers.utils import move_cache
-        login(os.environ["HF_TOKEN"])
 
+        print("Downloading model, this may take a few minutes...")
         os.makedirs(MODEL_DIR, exist_ok=True)
         snapshot_download(
             MODEL_NAME,
@@ -68,6 +54,7 @@ class Llama:
     def start_engine(self):
         from vllm.engine.arg_utils import AsyncEngineArgs
         from vllm.engine.async_llm_engine import AsyncLLMEngine
+        from transformers import AutoTokenizer
         t0 = time.time()
 
         engine_args = AsyncEngineArgs(
@@ -79,6 +66,8 @@ class Llama:
             disable_log_requests=True,
         )
 
+        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
         # this can take some time!
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
         print(f"VLLM engine started in {time.time() - t0:.2f}s")
@@ -89,21 +78,28 @@ class Llama:
         pass
 
     @modal.method(is_generator=True)
-    async def generate(self, input, history=[]):
+    async def generate(self, prompt, history=[]):
         from vllm import SamplingParams
         from vllm.utils import random_uuid
 
-        stop_token = "<|END|>"
-        stop_tokens = [stop_token, "Human:"] # prevent model from generating a response to itself
-        system_prompt = f"You are a helpful AI assistant. Respond to the human to the best of your ability. Keep it brief.. When you have completed your response, end it with the token {stop_token}. For example: Human: What's the capital of France? Assistant: The capital of France is Paris.{stop_token}"
+        messages = [
+            {"role": "system", "content": f"You are a helpful AI assistant. Respond to the human to the best of your ability. Keep it brief."},
+        ]
 
+        for history_entry in history:
+            # history follows "role" + "content" format so can be used directly
+            messages.append(history_entry)
+
+        messages.append({"role": "user", "content": prompt})
+
+        prompts = self.tokenizer.apply_chat_template(messages, tokenize=False)
         sampling_params = SamplingParams(
             temperature=0.75,
-            max_tokens=128,
-            repetition_penalty=1.1,
-            stop=stop_tokens,
-            include_stop_str_in_output=False,
+            top_p=0.9,
+            max_tokens=256,
+            repetition_penalty=1.1
         )
+<<<<<<< HEAD
 
         # prepend system message to history
         history.insert(0, { "role": "system", "content": system_prompt })
@@ -124,34 +120,39 @@ class Llama:
         prompt += f"Human: {input}\n"
         prompt += "Assistant: "
 
+=======
+>>>>>>> main
         request_id = random_uuid()
-        print(f"Request {request_id} generating with prompt:{prompt}")
-        result_stream = self.engine.generate(
-            prompt,
-            sampling_params,
-            request_id,
-        )
-
+        print(f"Request {request_id} generating with prompt:\n{prompts}")
+        result_stream = self.engine.generate(prompts, sampling_params, request_id)
         index = 0
         buffer = ""
+        header_complete = False
         async for output in result_stream:
             if output.outputs[0].text and "\ufffd" == output.outputs[0].text[-1]:
                 # Skip incomplete unicode characters
                 continue
 
             new_text = output.outputs[0].text[index:]
-            buffer += new_text
             index = len(output.outputs[0].text)
+
+            # ignore leading <|start_header_id|>assistant<|end_header_id|>
+            if not header_complete:
+                if new_text == "<|end_header_id|>":
+                    header_complete = True
+                continue
+
+            buffer += new_text
 
             # Yield any complete words in the buffer
             while buffer:
                 space_index = buffer.find(" ")
                 if space_index == -1:
                     break
-                
+
                 word = buffer[:space_index + 1]
                 yield word.strip()
-                
+
                 buffer = buffer[space_index + 1:]
 
         # Yield any remaining content in the buffer
@@ -163,4 +164,3 @@ def main(prompt: str = "Who was Emperor Norton I, and what was his significance 
     model = Llama()
     for token in model.generate.remote_gen(prompt):
         print(token, end=" ")
-

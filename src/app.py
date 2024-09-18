@@ -4,17 +4,18 @@ API routes for transcription, language model generation and text-to-speech.
 """
 from pathlib import Path
 import modal
+import base64
 
 from .xtts import XTTS
 from .whisper import Whisper
 from .llama import Llama
 from .fillers import Fillers
-import base64
 import time
 
 from .common import app
 
 static_path = Path(__file__).with_name("frontend").resolve()
+
 
 @app.function(
     mounts=[modal.Mount.from_local_dir(static_path, remote_path="/assets")],
@@ -32,7 +33,7 @@ def web():
 
     # disable caching on static files
     StaticFiles.is_not_modified = lambda self, *args, **kwargs: False
-    
+
     web_app = FastAPI()
 
     web_app.add_middleware(
@@ -51,19 +52,20 @@ def web():
 
     @web_app.get("/status")
     async def status():
-        '''Return the status of each inference module, to provide feedback to the user about the app's readiness.'''
+        """Return the status of each inference module, to provide feedback to the user about the app's readiness."""
         whisper_stats = whisper.prewarm.get_current_stats()
         llama_stats = llama.prewarm.get_current_stats()
         xtts_stats = xtts.prewarm.get_current_stats()
         return {
-            "whisper": whisper_stats.num_total_runners > 0 and whisper_stats.backlog == 0,
+            "whisper": whisper_stats.num_total_runners > 0
+            and whisper_stats.backlog == 0,
             "llama": llama_stats.num_total_runners > 0 and llama_stats.backlog == 0,
             "xtts": xtts_stats.num_total_runners > 0 and xtts_stats.backlog == 0,
         }
 
     @web_app.get("/prewarm")
     async def prewarm():
-        '''Prewarm the inference modules, to ensure they're ready to receive requests.'''
+        """Prewarm the inference modules, to ensure they're ready to receive requests."""
         prewarm_futures = [
             whisper.prewarm.spawn(),
             llama.prewarm.spawn(),
@@ -77,7 +79,7 @@ def web():
 
     @web_app.websocket("/pipeline")
     async def websocket_endpoint(websocket: WebSocket):
-        '''A websocket endpoint to generate a single response from a user's input. 
+        """A websocket endpoint to generate a single response from a user's input.
 
         Receive Stages:
         1: User streams their input in via WebSocket. Transcription begins immediately. Multiple transcription chunks may be sent in.
@@ -94,9 +96,9 @@ def web():
             send: { "type": "text", "value": <text> } -> <text> is a text sentence from the LLM
             send: { "type": "wav", "value": <base64 encoded wav bytes> } -> Wav bytes
         7: Once all TTS chunks are sent, the websocket is closed.
-        '''
+        """
         await websocket.accept()
-        
+
         history = []
 
         # Receive message stream from client
@@ -117,15 +119,17 @@ def web():
                     wav_bytes = base64.b64decode(msg["value"])
                     yield wav_bytes
                 else:
-                    print(f"websocket.receive_bytes received unknown message type: {msg['type']}")
+                    print(
+                        f"websocket.receive_bytes received unknown message type: {msg['type']}"
+                    )
                     continue
 
         # Transcribe user input wavs the moment they become available
         transcribe_futures = []
         async for chunk in user_input_stream_gen():
             transcribe_futures.append(whisper.transcribe.spawn(chunk))
-        
-        # Await all transcription chunks, since reponse generation 
+
+        # Await all transcription chunks, since reponse generation
         # requires the full transcript before it can begin
         transcript_chunks = []
         for id in transcribe_futures:
@@ -134,25 +138,28 @@ def web():
 
         # Send the completed transcript back to the client
         transcript = " ".join(transcript_chunks)
-        await websocket.send_bytes(json.dumps({
-            "type": "transcript", 
-            "value": transcript
-        }).encode())
-
+        await websocket.send_bytes(
+            json.dumps({"type": "transcript", "value": transcript}).encode()
+        )
 
         # While we think, send back filler audio
         sentences = fillers.neighbors.remote(transcript, n=1)
         for sentence in sentences:
             wav_bytesio = fillers.fetch_wav.remote(sentence)
             if wav_bytesio is not None:
-                await websocket.send_bytes(json.dumps({
-                    "type": "wav",
-                    "value": base64.b64encode(wav_bytesio.getvalue()).decode("utf-8")
-                }).encode())
-                await websocket.send_bytes(json.dumps({
-                    "type": "text",
-                    "value": sentence
-                }).encode())
+                await websocket.send_bytes(
+                    json.dumps(
+                        {
+                            "type": "wav",
+                            "value": base64.b64encode(wav_bytesio.getvalue()).decode(
+                                "utf-8"
+                            ),
+                        }
+                    ).encode()
+                )
+                await websocket.send_bytes(
+                    json.dumps({"type": "text", "value": sentence}).encode()
+                )
 
         # Send the transcript to the LLM
         llm_response_stream_gen = llama.generate.remote_gen(transcript, history)
@@ -160,6 +167,7 @@ def web():
         # Accumulate the LLM response stream into sentences
         # for more natural-sounding TTS.
         punctuation = [".", "?", "!", ":", ";", "*"]
+
         def tts_input_stream_acccumulator(text_stream):
             current_chunk = ""
             for word in text_stream:
@@ -181,22 +189,26 @@ def web():
         tts_output_stream_gen = xtts.speak.map(tts_input_stream_gen)
 
         async for text, wav_bytesio in tts_output_stream_gen:
-
             # Send the text string to the client for the chat UI to display
-            await websocket.send_bytes(json.dumps({
-                "type": "text", 
-                "value": text
-            }).encode())
+            await websocket.send_bytes(
+                json.dumps({"type": "text", "value": text}).encode()
+            )
 
             # Send the wav in two messages: first the json signal, then the actual bytes
-            await websocket.send_bytes(json.dumps({
-                "type": "wav",
-                "value": base64.b64encode(wav_bytesio.getvalue()).decode("utf-8")
-            }).encode())
+            await websocket.send_bytes(
+                json.dumps(
+                    {
+                        "type": "wav",
+                        "value": base64.b64encode(wav_bytesio.getvalue()).decode(
+                            "utf-8"
+                        ),
+                    }
+                ).encode()
+            )
 
         # All done! Close the websocket.
         await websocket.close()
-        
+
     # Serve static files, for the frontend
     web_app.mount("/", StaticFiles(directory="/assets", html=True))
     return web_app

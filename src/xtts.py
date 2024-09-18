@@ -15,7 +15,6 @@ which you may find at https://coqui.ai/cpml
 import io
 import modal
 import time
-
 from .common import app
 
 tts_image = (
