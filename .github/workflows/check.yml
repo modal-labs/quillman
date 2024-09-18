@@ -17,8 +17,8 @@ jobs:
       - name: Run deployment script
         run: |
             pip install -r requirements/requirements-dev.txt
-            cd tests
-            python e2e_test.py
+            modal serve src.app &
+            python tests/e2e_test.py
     runs-on: ubuntu-20.04
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_MODAL_LABS_TOKEN_ID }}
