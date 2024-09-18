@@ -16,9 +16,7 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 2. FastAPI server ([`src/app.py`](./src/app.py))
 3. Whisper transcription module ([`src/whisper.py`](./src/whisper.py))
 4. XTTS text-to-speech module ([`src/xtts.py`](./src/xtts.py))
-5. Llama 3.1 text generation module ([`src/llama.py`](./src/llama.py))
-
-Read the accompanying [docs](https://modal.com/docs/examples/llm-voice-chat) for a detailed look at each of these components.
+5. LLaMA 3.1 text generation module ([`src/llama.py`](./src/llama.py))
 
 ## Developing locally
 
@@ -30,7 +28,7 @@ Read the accompanying [docs](https://modal.com/docs/examples/llm-voice-chat) for
 
 ### Developing the inference modules
 
-Whisper, XTTS, and Llama each have a [local_entrypoint()](https://modal.com/docs/reference/modal.App#local_entrypoint) method that is invoked when you run that file directly. 
+Whisper, XTTS, and Llama each have a [`local_entrypoint`](https://modal.com/docs/reference/modal.App#local_entrypoint) method that is invoked when you run that file directly. 
 This is useful for testing each module standalone, without needing to run the whole app.
 
 For example, to test the Whisper transcription module, run:
@@ -44,7 +42,7 @@ The http server at `src/app.py` is a [FastAPI](https://fastapi.tiangolo.com/) ap
 
 It also serves the frontend as static files.
 
-To [serve](https://modal.com/docs/guide/webhooks#developing-with-modal-serve) the app on Modal, run this command from the root directory of this repo:
+To run a [development server]((https://modal.com/docs/guide/webhooks#developing-with-modal-serve)), execute this command from the root directory of this repo:
 
 ```shell
 modal serve src.app
@@ -60,4 +58,4 @@ Once you're happy with your changes, [deploy](https://modal.com/docs/guide/manag
 modal deploy src.app
 ```
 
-[Note that leaving the app deployed on Modal doesn't cost you anything! Modal apps are serverless and scale to 0 when not in use.]
+Note that leaving the app deployed on Modal doesn't cost you anything! Modal apps are serverless and scale to 0 when not in use.
