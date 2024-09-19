@@ -45,7 +45,7 @@ class XTTS:
     def __init__(self):
         pass
 
-    # We can stack the build and enter methods since TTS loads the model and caches it in memory
+    # We can stack the build and enter methods to download the model during build and load it during entry
     @modal.build()
     @modal.enter()
     def load_model(self):
