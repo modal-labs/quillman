@@ -18,11 +18,11 @@ But with Modal, it’s as simple as writing 4 different classes and running a CL
 
 Our project structure looks like this:
 
-1. [Language model module](https://modal.com/docs/examples/llm-voice-chat#language-model): continues a text conversation with a text reply.
-2. [Transcription module](https://modal.com/docs/examples/llm-voice-chat#transcription): converts speech audio into text.
-3. [Text-to-speech module](https://modal.com/docs/examples/llm-voice-chat#text-to-speech): converts text into speech.
-4. [FastAPI server](https://modal.com/docs/examples/llm-voice-chat#fastapi-server): runs server-side app logic.
-5. [React frontend](https://modal.com/docs/examples/llm-voice-chat#react-frontend): runs client-side interaction logic.
+1. [Language model module](#language-model-module---llama-31-8b): continues a text conversation with a text reply.
+2. [Transcription module](#transcription-module---whisper-v3): converts speech audio into text.
+3. [Text-to-speech module](#text-to-speech-module---xtts): converts text into speech.
+4. [FastAPI server](#fastapi-backend): runs server-side app logic.
+5. [React frontend](#react-frontend): runs client-side interaction logic.
 
 Let’s go through each of these components in more detail.
 
