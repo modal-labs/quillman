@@ -26,8 +26,6 @@ Our project structure looks like this:
 
 Let’s go through each of these components in more detail.
 
-You’ll want to have the code handy — look for GitHub links in this guide to see the code for each component.
-
 ### Language model module - LLaMA 3.1 8B
 
 Language models are trained to predict what text will come at the end of incomplete text. From this simple task emerge the sparks of artificial general intelligence.
