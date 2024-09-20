@@ -1,46 +1,57 @@
-# websocket test
-
 import asyncio
 import websockets
-import json
 import sphn
-import scipy.io.wavfile
 import numpy as np
-
-def read_wav_to_pcm(path: str) -> np.ndarray:
-    wav = scipy.io.wavfile.read(path)
-    pcm = wav[1].astype(np.float32)
-    return pcm
 
 async def main():
     sample_rate: float = 24000
     frame_size: int = 1920
 
-    ## ERIK TODO FOR TOMORROW
-    # this client is broken. we want to stream opus to the server as bytes
-    # it should echo them back to the client as bytes
-
+    # Initialize OpusStreamWriter
     opus_writer = sphn.OpusStreamWriter(sample_rate)
-    opus_reader = sphn.OpusStreamReader(sample_rate)
-    with open("./test-audio/user_input_chunk1.opus", "rb") as f:
-        opus_reader.append_bytes(f.read())
 
-    pcm = opus_reader.read_pcm()
-    opus_writer.append_pcm(pcm)
+    # Read audio file using sphn.read
+    audio_path = "./test-audio/user_input_chunk1.wav"  # Replace with your audio file path
+    pcm_data, file_sample_rate = sphn.read(audio_path)
 
-    async with websockets.connect("wss://erik-dunteman--src-prototype-moshi-app-dev.modal.run/ws") as websocket:
+    # Resample if necessary
+    if file_sample_rate != sample_rate:
+        pcm_data = sphn.resample(pcm_data, src_sample_rate=file_sample_rate, dst_sample_rate=sample_rate)
 
-        async def send_loop():
-            while True:
-                await asyncio.sleep(0.001)
-                msg = opus_writer.read_bytes()
-                await websocket.send(msg)
+    # Ensure the PCM data is in the correct shape (mono)
+    if len(pcm_data.shape) > 1:
+        pcm_data = pcm_data[:, 0]  # Take the first channel if stereo
 
-        async def recv_loop():
-            while True:
-                data = await websocket.recv()
-                print("got data back")
+    # Convert to float32 if not already
+    pcm_data = pcm_data.astype(np.float32)
 
-        asyncio.gather(send_loop(), recv_loop())
-        
+    # Append PCM data to OpusStreamWriter in chunks
+    for i in range(0, len(pcm_data), frame_size):
+        chunk = pcm_data[i:i+frame_size]
+        if len(chunk) < frame_size:
+            chunk = np.pad(chunk, (0, frame_size - len(chunk)), 'constant')
+        opus_writer.append_pcm(chunk)
+
+    try:
+        async with websockets.connect("wss://erik-dunteman--src-prototype-moshi-app-dev.modal.run/ws") as ws:
+            async def send_loop():
+                while True:
+                    await asyncio.sleep(0.001)
+                    msg = opus_writer.read_bytes()
+                    if len(msg) > 0:
+                        print("sending", len(msg))
+                        await ws.send(msg) 
+
+            async def recv_loop():
+                i = 0
+                while True:
+                    data = await ws.recv()
+                    print(i, "got data back", len(data))
+                    i += 1
+
+            await asyncio.gather(send_loop(), recv_loop())
+    except websockets.exceptions.ConnectionClosedError:
+        print("WebSocket connection closed")
+        exit(0)
+
 asyncio.run(main())
