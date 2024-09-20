@@ -123,7 +123,7 @@ We use these techniques in `/pipeline` to achieve this:
 
 In addition, we add a `/prewarm` endpoint, to be called by the client before they run the first `/pipeline` request. This ensures all on-GPU models are loaded and ready to go.
 
-### **React frontend**
+### React frontend
 
 We use the [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API)
 to record snippets of audio from the user’s microphone.
@@ -134,7 +134,7 @@ that distinguishes between speech and silence and emits events for speech buffer
 The frontend maintains a state machine to manage the state of the conversation.
 This is implemented with the help of the incredible [XState](https://github.com/statelyai/xstate) library.
 
-## **Steal this example**
+## Steal this example
 
 The code for this entire example is [available on GitHub](https://github.com/modal-labs/quillman).
 Follow the instructions in the README to deploy it yourself on Modal.
