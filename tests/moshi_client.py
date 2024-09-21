@@ -17,7 +17,7 @@ async def run_pipeline(opus_writer, opus_reader):
     last_recv = time.time()
     received_data = False
     silence_cutoff = 3 # seconds
-
+    print("Starting single response pipeline...")
     try:
         async with websockets.connect(
             endpoint,
@@ -29,7 +29,6 @@ async def run_pipeline(opus_writer, opus_reader):
                     msg = opus_writer.read_bytes()
                     if len(msg) > 0:
                         await ws.send(msg) 
-                        print("Sent", len(msg), "bytes")
 
             async def recv_loop():
                 nonlocal last_recv, received_data, opus_reader
@@ -38,7 +37,6 @@ async def run_pipeline(opus_writer, opus_reader):
                     # so the first two recvs we receive are headers and not actual audio data. Useful headers, 
                     # but just keep that in mind when it comes to debugging syncronization issues
                     data = await ws.recv()
-                    print("Received", len(data), "bytes")
                     opus_reader.append_bytes(data)
                     last_recv = time.time()
                     received_data = True
@@ -92,17 +90,20 @@ def get_user_mic_input(opus_writer, sample_rate, frame_size):
     )
     # record for 10 seconds
     with in_stream:
+        print("Starting recording...")
         in_stream.start()
-        for i in range(5):
-            print(f"Recording for {5-i}s")
+        for i in range(10):
+            print(f"Recording for {10-i}s")
             time.sleep(1)
         in_stream.stop()
         print("Recording complete. Awaiting model response.")
 
 def play_audio(pcm_data, sample_rate):  
     import sounddevice as sd
+    print("Starting playback...")
     sd.play(pcm_data, sample_rate)
     sd.wait()
+    print("Playback complete.")
 
 def get_demo_audio(opus_writer, sample_rate, frame_size):
     demo_path = "./test-audio/user_input_chunk1.wav"
@@ -138,6 +139,7 @@ async def main():
         print("Using demo audio.")
         print("Run `python moshi_client.py interractive` to use interractive mode instead.")
         get_demo_audio(opus_writer, sample_rate, frame_size)
+        await run_pipeline(opus_writer, opus_reader)
         print("Saving output")
         pcm_data = pcm_from_opus_reader(opus_reader)
         sphn.write_wav("/tmp/moshi_out.wav", pcm_data, sample_rate)
