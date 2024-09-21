@@ -1,10 +1,13 @@
 import asyncio
-from curses import nonl
-from io import BytesIO
 import time
-import websockets
-import sphn
-import numpy as np
+import os
+
+try:
+    import websockets
+    import sphn
+    import numpy as np
+except ImportError:
+    print("you need to pip install websockets, sphn, and numpy")
 
 def wav_to_pcm(wav_path: str, sample_rate: int = 24000, frame_size: int = 1920):
     pcm_data, file_sample_rate = sphn.read(wav_path)
@@ -26,8 +29,8 @@ async def main():
     sample_rate: float = 24000
     frame_size: int = 1920
 
-    # Initialize OpusStreamWriter
     opus_writer = sphn.OpusStreamWriter(sample_rate)
+    opus_reader = sphn.OpusStreamReader(sample_rate)
 
     pcm_data = wav_to_pcm("./test-audio/user_input_chunk1.wav")
 
@@ -38,7 +41,9 @@ async def main():
             chunk = np.pad(chunk, (0, frame_size - len(chunk)), 'constant')
         opus_writer.append_pcm(chunk)
 
-    all_opus_data = []
+    last_recv = time.time()
+    received_data = False
+    silence_cutoff = 3 # seconds
 
     try:
         async with websockets.connect(
@@ -51,37 +56,43 @@ async def main():
                     msg = opus_writer.read_bytes()
                     if len(msg) > 0:
                         await ws.send(msg) 
-                        print(f"sent {len(msg)} bytes")
+                        print("Sent", len(msg), "bytes")
 
             async def recv_loop():
+                nonlocal last_recv, received_data, opus_reader
                 while True:
                     # note that opus_writer, on both client and server, send 47 + 53 bytes worth of header immediately 
                     # so the first two recvs we receive are headers and not actual audio data. Useful headers, 
                     # but just keep that in mind when it comes to debugging syncronization issues
                     data = await ws.recv()
-                    print(f"got {len(data)} bytes")
-                    for b in data:
-                        all_opus_data.append(b)
+                    print("Received", len(data), "bytes")
+                    opus_reader.append_bytes(data)
+                    last_recv = time.time()
+                    received_data = True
 
-            async def save_loop():
-                i = 0
-                nonlocal all_opus_data
+
+            async def timeout_loop():
                 while True:
-                    await asyncio.sleep(5)
-                    if len(all_opus_data) > 0:
-                        print("saving")
-                    
-                        with open(f"./user_output_chunk{i}.opus", "wb") as f:
-                            f.write(bytearray(all_opus_data))
+                    await asyncio.sleep(0.1)
+                    if received_data and time.time() - last_recv > silence_cutoff:
+                        print(f"Server silent for {silence_cutoff}s, closing connection")
+                        
+                        # will cause a ConnectionClosedError, caught below
+                        await ws.close()
 
-                        all_opus_data = []
-
-                        i += 1
-
-                    
-
-            await asyncio.gather(send_loop(), recv_loop(), save_loop())
-    except websockets.exceptions.ConnectionClosedError:
+            await asyncio.gather(send_loop(), recv_loop(), timeout_loop())
+            
+    except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.ConnectionClosedOK):
         print("WebSocket connection closed")
+    
+    print("Saving output")
+    pcm_data = np.array([])
+    while True:
+        pcm = opus_reader.read_pcm()
+        if pcm.shape[0] == 0:
+            break
+        pcm_data = np.concatenate((pcm_data, pcm), axis=0)
+    pcm_data = pcm_data.astype(np.float32)
+    sphn.write_wav("./moshi_out.wav", pcm_data, sample_rate)
 
-asyncio.run(main())#
+asyncio.run(main())

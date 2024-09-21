@@ -2,3 +2,4 @@
 requests
 websockets
 sphn
+numpy
