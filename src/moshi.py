@@ -4,7 +4,6 @@ import time
 
 from .common import app
 
-
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
@@ -81,6 +80,10 @@ class Moshi:
 
         web_app = FastAPI()
 
+        @web_app.get("/status")
+        async def status():
+            return Response(status_code=200)
+
         @web_app.websocket("/ws")
         async def websocket(ws: WebSocket):
             with torch.no_grad():
@@ -156,12 +159,10 @@ class Moshi:
                                 if text_token not in (0, 3):
                                     _text = self.text_tokenizer.id_to_piece(text_token)  # type: ignore
                                     _text = _text.replace("▁", " ")
-                                    print(f"text token '{_text}'")
+                                    print(f"output token: '{_text}'")
                                 #     msg = b"\x02" + bytes(_text, encoding="utf8") # uses "\x02" as a tag to indicate text
                                 #     log("info", f"text token '{_text}'")
                                 #     await ws.send_bytes(msg)
-                            
-                            # print(f"frame inference took {time.time() - t0:.2}s")
 
                 async def send_loop():
                     '''
@@ -199,3 +200,4 @@ class Moshi:
                     self.reset_state()
 
         return web_app
+    

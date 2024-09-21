@@ -7,7 +7,7 @@ try:
     import sphn
     import numpy as np
 except ImportError:
-    print("you need to pip install websockets, sphn, and numpy")
+    print("you need to run `pip install websockets sphn numpy`")
 
 def wav_to_pcm(wav_path: str, sample_rate: int = 24000, frame_size: int = 1920):
     pcm_data, file_sample_rate = sphn.read(wav_path)
@@ -93,6 +93,7 @@ async def main():
             break
         pcm_data = np.concatenate((pcm_data, pcm), axis=0)
     pcm_data = pcm_data.astype(np.float32)
-    sphn.write_wav("./moshi_out.wav", pcm_data, sample_rate)
+    sphn.write_wav("/tmp/moshi_out.wav", pcm_data, sample_rate)
+    print("Saved output to /tmp/moshi_out.wav")
 
 asyncio.run(main())
