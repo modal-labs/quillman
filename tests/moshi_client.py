@@ -120,24 +120,24 @@ async def main():
     sample_rate: float = 24000
     frame_size: int = 1920
 
-    interractive = False
+    interactive = False
     if len(args) > 0:
-        if args[0] == "interractive":
-            interractive = True
+        if args[0] == "interactive":
+            interactive = True
 
     opus_writer = sphn.OpusStreamWriter(sample_rate)
     opus_reader = sphn.OpusStreamReader(sample_rate)
 
     # Load up opus_writer with audio data    
-    if interractive:
-        print("Running in interractive mode.")
+    if interactive:
+        print("Running in interactive mode.")
         get_user_mic_input(opus_writer, sample_rate, frame_size)
         await run_pipeline(opus_writer, opus_reader)
         pcm_data = pcm_from_opus_reader(opus_reader)
         play_audio(pcm_data, sample_rate)
     else:
         print("Using demo audio.")
-        print("Run `python moshi_client.py interractive` to use interractive mode instead.")
+        print("Run `python moshi_client.py interactive` to use interactive mode instead.")
         get_demo_audio(opus_writer, sample_rate, frame_size)
         await run_pipeline(opus_writer, opus_reader)
         print("Saving output")
