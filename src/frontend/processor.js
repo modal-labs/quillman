@@ -1,38 +1,26 @@
-const PAUSE_DURATION = 0.5; // seconds of silence before sending a chunk
-const END_DURATION = 3; // seconds of silence before ending recording
-
 class WorkletProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     
     // Configuration
     const processorOptions = options.processorOptions || {};
-    this.PAUSE_DURATION = PAUSE_DURATION;
-    this.END_DURATION = END_DURATION;
-    this.isMuted = true;
-
-    this.talkingThreshold = 0.05; // initial value
+    // this.is_muted = false; // todo erik: just future ref that you can set internal state
 
     // State
-    this._buffer = [];
-    this._isTalking = false;
-    this._isRecordingSession = false;
-    this._silenceCounter = 0;
+    // this._buffer = []; // todo erik future ref
 
     // Add message event listener
     this.port.onmessage = this.handleMessage.bind(this);
   }
 
   handleMessage(event) {
-    if (event.data.type === 'updateThreshold') {
-      this.talkingThreshold = event.data.value;
-    }
-    if (event.data.type === 'mute') {
-      this.isMuted = true;
-    }
-    if (event.data.type === 'unmute') {
-      this.isMuted = false;
-    }
+    // todo erik future ref
+    // if (event.data.type === 'mute') {
+    //   this.isMuted = true;
+    // }
+    // if (event.data.type === 'unmute') {
+    //   this.isMuted = false;
+    // }
   }
 
   process(inputs, outputs, parameters) {
@@ -40,9 +28,10 @@ class WorkletProcessor extends AudioWorkletProcessor {
     if (!input) return true; // Early return if no input
 
     const amplitude = this._calculateAmplitude(input);
+    // console.log("amplitude from worker", amplitude);
     this.port.postMessage({ type: 'amplitude', value: amplitude });
 
-    if (this.isMuted) return true;
+    return true;
     
     // every time user goes above threshold, we start recording
     // staying above that threshold maintains the recording state

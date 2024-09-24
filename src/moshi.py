@@ -2,15 +2,15 @@ import modal
 import asyncio
 import time
 
-from .common import app
+app = modal.App("moshi")
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
-        "moshi",
-        "huggingface_hub",
-        "hf_transfer",
-        "sphn",
+        "moshi==0.1.0",
+        "huggingface_hub==0.24.7",
+        "hf_transfer==0.1.8",
+        "sphn==0.1.4",
     )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
 )
@@ -26,7 +26,7 @@ with image.imports():
 @app.cls(
     image=image,
     gpu="A10G",
-    container_idle_timeout=60,
+    container_idle_timeout=300,
     timeout=600,
     allow_concurrent_inputs=1, # websocket connection must be unique to avoid GPU conflicts
 )
@@ -48,7 +48,14 @@ class Moshi:
 
         moshi_weight = hf_hub_download(loaders.DEFAULT_REPO, loaders.MOSHI_NAME)
         self.moshi = loaders.get_moshi_lm(moshi_weight, device=self.device)
-        self.lm_gen = LMGen(self.moshi) # can add temp here
+        self.lm_gen = LMGen(
+            self.moshi,
+            # Sampling params
+            temp = 0.8,
+            temp_text = 0.8,
+            top_k = 250,
+            top_k_text = 25,
+        )
 
         self.mimi.streaming_forever(1)
         self.lm_gen.streaming_forever(1)
@@ -67,12 +74,14 @@ class Moshi:
                 _ = self.mimi.decode(tokens[:, 1:])
         torch.cuda.synchronize()
 
-        self.reset_state()
-
     def reset_state(self):
         # we use Opus format for audio across the websocket, as it can be safely streamed and decoded in real-time
         self.opus_stream_outbound = sphn.OpusStreamWriter(self.mimi.sample_rate)
         self.opus_stream_inbound = sphn.OpusStreamReader(self.mimi.sample_rate)
+
+        # LLM is stateful, maintaining chat history, so reset it on each connection
+        self.mimi.reset_streaming()
+        self.lm_gen.reset_streaming()
 
     @modal.asgi_app()
     def app(self):
@@ -88,6 +97,11 @@ class Moshi:
         async def websocket(ws: WebSocket):
             with torch.no_grad():
                 await ws.accept()
+
+                # Clear model chat history and any buffered audio
+                self.reset_state() 
+
+                print("Session started")
                 tasks = []
 
                 # We use asyncio to run multiple loops concurrently, within the context of this single websocket connection
@@ -105,7 +119,6 @@ class Moshi:
                             print("received empty message")
                             continue
 
-                        # print(f"received {len(data)} bytes")
                         self.opus_stream_inbound.append_bytes(data)
 
                 async def inference_loop():
@@ -155,14 +168,11 @@ class Moshi:
                                 self.opus_stream_outbound.append_pcm(main_pcm[0, 0].numpy())
                                 
                                 text_token = tokens[0, 0, 0].item()
-                                # print("text token", text_token)
                                 if text_token not in (0, 3):
-                                    _text = self.text_tokenizer.id_to_piece(text_token)  # type: ignore
-                                    _text = _text.replace("▁", " ")
-                                    print(f"output token: '{_text}'")
-                                #     msg = b"\x02" + bytes(_text, encoding="utf8") # uses "\x02" as a tag to indicate text
-                                #     log("info", f"text token '{_text}'")
-                                #     await ws.send_bytes(msg)
+                                    text = self.text_tokenizer.id_to_piece(text_token)
+                                    text = text.replace("▁", " ")
+                                    msg = b"\x02" + bytes(text, encoding="utf8") # prepend "\x02" as a tag to indicate text
+                                    await ws.send_bytes(msg)
 
                 async def send_loop():
                     '''
@@ -175,9 +185,8 @@ class Moshi:
                             continue
                         if len(msg) == 0:
                             continue
-
+                        msg = b"\x01" + msg # prepend "\x01" as a tag to indicate audio
                         await ws.send_bytes(msg)
-                        # print(f"sent {len(msg)} bytes")
 
                 # This runs all the loops concurrently
                 try:
