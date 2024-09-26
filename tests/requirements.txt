@@ -1,5 +1,4 @@
--r requirements.txt
-requests
-websockets
-sphn
+sounddevice
 numpy
+sphn
+aiohttp

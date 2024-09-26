@@ -2,7 +2,7 @@ import modal
 import asyncio
 import time
 
-app = modal.App("moshi")
+from .common import app
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -199,13 +199,16 @@ class Moshi:
                 
                 except WebSocketDisconnect:
                     print("WebSocket disconnected")
+                    await ws.close(code=1000)
                 except Exception as e:
                     print("Exception:", e)
+                    await ws.close(code=1011)  # Internal error
+                    raise e
                 finally:
                     for task in tasks:
                         task.cancel()
                     await asyncio.gather(*tasks, return_exceptions=True)
-                    self.opus_stream_inbound.close()
+                    # self.opus_stream_inbound.close()
                     self.reset_state()
 
         return web_app

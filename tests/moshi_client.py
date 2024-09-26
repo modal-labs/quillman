@@ -14,7 +14,7 @@ profile = subprocess.run(
     ["modal", "profile", "current"], check=True, capture_output=True, text=True
 ).stdout.splitlines()[0]
 
-app_name = "moshi"
+app_name = "quillman"
 class_name = "moshi"
 
 endpoint = f"wss://{profile}--{app_name}-{class_name}-app-dev.modal.run/ws"
