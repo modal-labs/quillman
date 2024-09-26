@@ -1,3 +1,7 @@
+'''
+Moshi websocket web service.
+'''
+
 import modal
 import asyncio
 import time
@@ -84,7 +88,7 @@ class Moshi:
         self.lm_gen.reset_streaming()
 
     @modal.asgi_app()
-    def app(self):
+    def web(self):
         from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 
         web_app = FastAPI()
@@ -118,7 +122,6 @@ class Moshi:
                         if len(data) == 0:
                             print("received empty message")
                             continue
-                        print("received", len(data), "bytes")
                         self.opus_stream_inbound.append_bytes(data)
 
                 async def inference_loop():

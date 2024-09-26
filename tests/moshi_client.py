@@ -17,7 +17,7 @@ profile = subprocess.run(
 app_name = "quillman"
 class_name = "moshi"
 
-endpoint = f"wss://{profile}--{app_name}-{class_name}-app-dev.modal.run/ws"
+endpoint = f"wss://{profile}--{app_name}-{class_name}-web-dev.modal.run/ws"
 
 # Global flag for shutdown
 shutdown_flag = asyncio.Event()

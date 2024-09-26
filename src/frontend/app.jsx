@@ -2,6 +2,46 @@ const { useRef, useEffect, useState } = React;
 
 const baseURL = "" // points to whatever is serving this app (eg your -dev.modal.run for modal serve, or .modal.run for modal deploy)
 
+const getBaseURL = () => {
+  // return "wss://erik-dunteman--quillman-moshi-web-dev.modal.run/ws"; // temporary erik!
+
+  // use current web app server domain to construct the url for the moshi app
+  const currentURL = new URL(window.location.href);
+  let hostname = currentURL.hostname;
+  hostname = hostname.replace('-web', '-moshi-web');
+  const wsProtocol = currentURL.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${wsProtocol}//${hostname}/ws`; 
+}
+
+const CenteredSquareUI = ({ warmupComplete, completedSentences, pendingSentence }) => {
+  const [contentHeight, setContentHeight] = useState('auto');
+  const allSentences = [...completedSentences, pendingSentence];
+  if (pendingSentence.length === 0 && allSentences.length > 1) {
+    allSentences.pop();
+  }
+  const displaySentences = allSentences;
+  return (
+    <div className="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-lg shadow-lg w-full max-w-xl p-6">
+        <div 
+          className="overflow-y-auto transition-height duration-300 ease-in-out flex flex-col-reverse max-h-64"
+        >
+          <div className="flex flex-col-reverse ">
+            {warmupComplete ? (
+              displaySentences.map((sentence, index) => (
+                <p key={index} className="text-gray-300 my-2">{sentence}</p>
+              )).reverse()
+            ) : (
+              <p className="text-gray-400 animate-pulse">Warming up model...</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 const App = () => {
   const socketRef = useRef(null);
   const [completedSentences, setCompletedSentences] = useState([]);
@@ -38,7 +78,7 @@ const App = () => {
 
   // open websocket connection
   useEffect(() => {
-    const endpoint = "wss://erik-dunteman--quillman-moshi-app-dev.modal.run/ws"; // todo make dynamic
+    const endpoint = getBaseURL();
     console.log("Connecting to", endpoint);
     const socket = new WebSocket(endpoint);
     socketRef.current = socket;
@@ -75,7 +115,6 @@ const App = () => {
       }
     };
 
-
     socket.onclose = () => {
       console.log("WebSocket connection closed");
     };
@@ -85,18 +124,10 @@ const App = () => {
     };
   }, []);
 
-  return (
-    <div className="app absolute h-screen w-screen flex text-white">
-      <div className="flex w-full flex-col">
-        {warmupComplete ? <>
-          {completedSentences.map((sentence, index) => (
-            <p key={index}>{sentence}</p>
-          ))}
-          <p>{pendingSentence}</p>
-        </> : <p>Warming up model...</p>}
-      </div>
-    </div>
-  );
+  const allSentences = [...completedSentences, pendingSentence];
+  const displaySentences = allSentences.slice(-10);
+
+  return CenteredSquareUI({ warmupComplete, completedSentences, pendingSentence });
 }
 
 

@@ -1,16 +1,9 @@
 """
-Main web application service. Serves the static frontend as well as
-proxying websocket connection to the deployed moshi model.
+Main web application service. Serves the static frontend.
 """
 from pathlib import Path
 import modal
-# import base64
-
-# from .xtts import XTTS
-# from .whisper import Whisper
-# from .llama import Llama
-# from .fillers import Fillers
-# import time
+from .moshi import Moshi # makes modal deploy also deploy moshi
 
 from .common import app
 
