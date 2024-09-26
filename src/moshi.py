@@ -118,7 +118,7 @@ class Moshi:
                         if len(data) == 0:
                             print("received empty message")
                             continue
-
+                        print("received", len(data), "bytes")
                         self.opus_stream_inbound.append_bytes(data)
 
                 async def inference_loop():
