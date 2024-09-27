@@ -124,7 +124,7 @@ const App = () => {
     <div className="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
       <div className="bg-gray-800 rounded-lg shadow-lg w-full max-w-xl p-6">
         <div className="flex">
-          <div className="w-5/6 overflow-y-auto max-h-64 pr-2">
+          <div className="w-5/6 overflow-y-auto max-h-64">
             <TextOutput warmupComplete={warmupComplete} completedSentences={completedSentences} pendingSentence={pendingSentence} />
           </div>
           <div className="w-1/6 ml-4 px-4">
@@ -198,7 +198,7 @@ const TextOutput = ({ warmupComplete, completedSentences, pendingSentence }) => 
   }, [completedSentences, pendingSentence]);
 
   return (
-    <div ref={containerRef} className="flex flex-col-reverse overflow-y-auto max-h-64">
+    <div ref={containerRef} className="flex flex-col-reverse overflow-y-auto max-h-64 pr-2">
       {warmupComplete ? (
         allSentences.map((sentence, index) => (
           <p key={index} className="text-gray-300 my-2">{sentence}</p>
