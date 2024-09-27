@@ -15,54 +15,29 @@ const getBaseURL = () => {
 }
 
 const App = () => {
-  const socketRef = useRef(null);
-  const [recorder, setRecorder] = useState(null);
+  // Mic Input
+  const [recorder, setRecorder] = useState(null); // Opus recorder
+  const [amplitude, setAmplitude] = useState(0); // Amplitude, captured from PCM analyzer
+
+  // Audio playback
+  const [audioContext] = useState(() => new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 }));
+  const sourceNodeRef = useRef(null); // Audio source node
+  const scheduledEndTimeRef = useRef(0); // Scheduled end time for audio playback
+  const decoderRef = useRef(null); // Decoder for converting opus to PCM
+
+  // WebSocket
+  const socketRef = useRef(null); // Ongoing websocket connection
+
+  // UI State
+  const [warmupComplete, setWarmupComplete] = useState(false);
   const [completedSentences, setCompletedSentences] = useState([]);
   const [pendingSentence, setPendingSentence] = useState('');
-  const [warmupComplete, setWarmupComplete] = useState(false);
-  const [amplitude, setAmplitude] = useState(0);
-  const [audioContext] = useState(() => new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 }));
-  
-  const sourceNodeRef = useRef(null);
-  const scheduledEndTimeRef = useRef(0);
-  const decoderRef = useRef(null);
 
-  const scheduleAudioPlayback = (newAudioData) => {
-    const sampleRate = audioContext.sampleRate;
-    const numberOfChannels = 1;
-    const nowTime = audioContext.currentTime;
-  
-    // Create a new buffer for the incoming audio data
-    const newBuffer = audioContext.createBuffer(numberOfChannels, newAudioData.length, sampleRate);
-    newBuffer.copyToChannel(newAudioData, 0);
-  
-    // Create a new source node for this piece of audio
-    const sourceNode = audioContext.createBufferSource();
-    sourceNode.buffer = newBuffer;
-    sourceNode.connect(audioContext.destination);
-  
-    // Schedule the new audio to play immediately after any currently playing audio
-    const startTime = Math.max(scheduledEndTimeRef.current, nowTime);
-    sourceNode.start(startTime);
-  
-    // Update the scheduled end time
-    scheduledEndTimeRef.current = startTime + newBuffer.duration;
-  
-    // Clean up the previous source node if it exists and has ended
-    if (sourceNodeRef.current && sourceNodeRef.current.buffer) {
-      const currentEndTime = sourceNodeRef.current.startTime + sourceNodeRef.current.buffer.duration;
-      if (currentEndTime <= nowTime) {
-        sourceNodeRef.current.disconnect();
-      }
-    }
-  
-    // Update the current source node reference
-    sourceNodeRef.current = sourceNode;
-  };
-  
-  // start recording
+
+
+  // Mic Input: start the Opus recorder
   const startRecording = async () => {
-    // used to get permission to use microphone
+    // prompts user for permission to use microphone
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
     const recorder = new Recorder({
@@ -105,7 +80,9 @@ const App = () => {
     mediaRecorder.start(10);
   };
 
-  // prep context and decoder for audio playback
+
+
+  // Audio Playback: Prep decoder for converting opus to PCM for audio playback
   useEffect(() => {
     const initializeDecoder = async () => {
       const decoder = new window["ogg-opus-decoder"].OggOpusDecoder();
@@ -123,8 +100,38 @@ const App = () => {
     };
   }, []);
 
+  // Audio Playback: schedule PCM audio chunks for seamless playback
+  const scheduleAudioPlayback = (newAudioData) => {
+    const sampleRate = audioContext.sampleRate;
+    const numberOfChannels = 1;
+    const nowTime = audioContext.currentTime;
+  
+    // Create a new buffer and source node for the incoming audio data
+    const newBuffer = audioContext.createBuffer(numberOfChannels, newAudioData.length, sampleRate);
+    newBuffer.copyToChannel(newAudioData, 0);
+    const sourceNode = audioContext.createBufferSource();
+    sourceNode.buffer = newBuffer;
+    sourceNode.connect(audioContext.destination);
+  
+    // Schedule the new audio to play immediately after any currently playing audio
+    const startTime = Math.max(scheduledEndTimeRef.current, nowTime);
+    sourceNode.start(startTime);
+  
+    // Update the scheduled end time so we know when to schedule the next piece of audio
+    scheduledEndTimeRef.current = startTime + newBuffer.duration;
+  
+    if (sourceNodeRef.current && sourceNodeRef.current.buffer) {
+      const currentEndTime = sourceNodeRef.current.startTime + sourceNodeRef.current.buffer.duration;
+      if (currentEndTime <= nowTime) {
+        sourceNodeRef.current.disconnect();
+      }
+    }
+    sourceNodeRef.current = sourceNode;
+  };
+  
 
-  // open websocket connection
+
+  // WebSocket: open websocket connection and start recording
   useEffect(() => {
     const endpoint = getBaseURL();
     console.log("Connecting to", endpoint);
