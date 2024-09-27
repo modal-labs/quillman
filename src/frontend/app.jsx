@@ -3,7 +3,8 @@ const { useRef, useEffect, useState } = React;
 const baseURL = "" // points to whatever is serving this app (eg your -dev.modal.run for modal serve, or .modal.run for modal deploy)
 
 const getBaseURL = () => {
-  // return "wss://erik-dunteman--quillman-moshi-web-dev.modal.run/ws"; // temporary erik!
+  return "wss://erik-dunteman--quillman-moshi-web-dev.modal.run/ws"; // temporary erik!
+  // erik todo for tomorrow, look at moshi repo frontend! the playback's gotta be in there.
 
   // use current web app server domain to construct the url for the moshi app
   const currentURL = new URL(window.location.href);
@@ -65,7 +66,6 @@ const App = () => {
       setAmplitude(average);
     };
     mediaRecorder.start(10);
-
   };
 
   // open websocket connection
@@ -124,10 +124,10 @@ const App = () => {
     <div className="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
       <div className="bg-gray-800 rounded-lg shadow-lg w-full max-w-xl p-6">
         <div className="flex">
-          <div className="w-5/6 overflow-y-auto max-h-64">
+          <div className="w-5/6 overflow-y-auto max-h-64 pr-2">
             <TextOutput warmupComplete={warmupComplete} completedSentences={completedSentences} pendingSentence={pendingSentence} />
           </div>
-          <div className="w-1/6 ml-4 px-2">
+          <div className="w-1/6 ml-4 px-4">
             <AudioControl recorder={recorder} amplitude={amplitude} />
           </div>
         </div>
@@ -137,12 +137,24 @@ const App = () => {
 }
 
 const AudioControl = ({ recorder, amplitude }) => {
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(true);
 
   const toggleMute = () => {
+    if (!recorder) {
+      return;
+    }
     setMuted(!muted);
     recorder.setRecordingGain(muted ? 1 : 0);
   };
+
+  // unmute automatically once the recorder is ready
+  useEffect(() => {
+    if (recorder) {
+      setMuted(false);
+      recorder.setRecordingGain(1);
+    }
+  },
+  [recorder]);
 
   const amplitudePercent = amplitude / 255;
   const maxAmplitude = 0.3; // for scaling
@@ -159,7 +171,7 @@ const AudioControl = ({ recorder, amplitude }) => {
       <div className="w-full h-6 rounded-md relative overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-center">
           <div
-            className={`rounded-full transition-all duration-100 ease-out hover:cursor-pointer ${muted ? 'bg-gray-200' : 'bg-green-400'}`}
+            className={`rounded-full transition-all duration-100 ease-out hover:cursor-pointer ${muted ? 'bg-gray-200' : 'bg-red-400'}`}
             onClick={toggleMute}
             style={{
               width: `${diameter}px`,
