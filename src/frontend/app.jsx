@@ -34,7 +34,6 @@ const App = () => {
   const [pendingSentence, setPendingSentence] = useState('');
 
 
-
   // Mic Input: start the Opus recorder
   const startRecording = async () => {
     // prompts user for permission to use microphone
@@ -66,20 +65,22 @@ const App = () => {
     });
 
     // create a MediaRecorder object for capturing PCM (calculating amplitude)
-    const analyzer = audioContext.createAnalyser();
+    const analyzerContext = new (window.AudioContext || window.webkitAudioContext)();
+    const analyzer = analyzerContext.createAnalyser();
     analyzer.fftSize = 256;
-    const sourceNode = audioContext.createMediaStreamSource(stream);
+    const sourceNode = analyzerContext.createMediaStreamSource(stream);
     sourceNode.connect(analyzer);
-    const mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = async (event) => {
+
+    // Use a separate audio processing function instead of MediaRecorder
+    const processAudio = () => {
       const dataArray = new Uint8Array(analyzer.frequencyBinCount);
       analyzer.getByteFrequencyData(dataArray);
       const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
       setAmplitude(average);
+      requestAnimationFrame(processAudio);
     };
-    mediaRecorder.start(10);
+    processAudio();
   };
-
 
 
   // Audio Playback: Prep decoder for converting opus to PCM for audio playback
@@ -128,7 +129,6 @@ const App = () => {
     }
     sourceNodeRef.current = sourceNode;
   };
-  
 
 
   // WebSocket: open websocket connection and start recording
@@ -220,8 +220,8 @@ const AudioControl = ({ recorder, amplitude }) => {
 
   const amplitudePercent = amplitude / 255;
   const maxAmplitude = 0.3; // for scaling
-  const minDiameter = 20; // minimum diameter of the circle in pixels
-  const maxDiameter = 200; // increased maximum diameter to ensure overflow
+  const minDiameter = 30; // minimum diameter of the circle in pixels
+  const maxDiameter = 150; // increased maximum diameter to ensure overflow
   
   var diameter = minDiameter + (maxDiameter - minDiameter) * (amplitudePercent / maxAmplitude);
   if (muted) {
@@ -230,7 +230,7 @@ const AudioControl = ({ recorder, amplitude }) => {
 
   return (
     <div className="w-full h-full flex items-center">
-      <div className="w-full h-6 rounded-md relative overflow-hidden">
+      <div className="w-full h-6 rounded-sm relative overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-center">
           <div
             className={`rounded-full transition-all duration-100 ease-out hover:cursor-pointer ${muted ? 'bg-gray-200' : 'bg-red-400'}`}
