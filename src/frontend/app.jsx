@@ -183,17 +183,36 @@ const App = () => {
   }, []);
 
   return (
-    <div className="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-lg shadow-lg w-full max-w-xl p-6">
+    <div className="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-lg shadow-lg w-full max-w-xl p-6 mb-8">
         <div className="flex">
           <div className="w-5/6 overflow-y-auto max-h-64">
             <TextOutput warmupComplete={warmupComplete} completedSentences={completedSentences} pendingSentence={pendingSentence} />
           </div>
-          <div className="w-1/6 ml-4 px-4">
+          <div className="w-1/6 ml-4 pl-4">
             <AudioControl recorder={recorder} amplitude={amplitude} />
           </div>
         </div>
       </div>
+      
+      <a
+        className="fixed bottom-4 inline-flex items-center justify-center"
+        href="https://modal.com"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <footer className="flex items-center px-3 py-2 rounded-lg bg-gray-800 shadow-lg hover:bg-gray-700 transition-colors duration-200">
+          <span className="text-sm font-medium text-gray-300 mr-2">
+            Built with <a 
+              className="underline" 
+              href="https://github.com/kyutai-labs/moshi" 
+              target="_blank" rel="noopener noreferrer">
+                Moshi
+            </a> and
+          </span>
+          <img className="w-24" src="./modal-logo.svg" alt="Modal logo" />
+        </footer>
+      </a>
     </div>
   );
 }
@@ -221,7 +240,7 @@ const AudioControl = ({ recorder, amplitude }) => {
   const amplitudePercent = amplitude / 255;
   const maxAmplitude = 0.3; // for scaling
   const minDiameter = 30; // minimum diameter of the circle in pixels
-  const maxDiameter = 150; // increased maximum diameter to ensure overflow
+  const maxDiameter = 200; // increased maximum diameter to ensure overflow
   
   var diameter = minDiameter + (maxDiameter - minDiameter) * (amplitudePercent / maxAmplitude);
   if (muted) {
@@ -233,7 +252,7 @@ const AudioControl = ({ recorder, amplitude }) => {
       <div className="w-full h-6 rounded-sm relative overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-center">
           <div
-            className={`rounded-full transition-all duration-100 ease-out hover:cursor-pointer ${muted ? 'bg-gray-200' : 'bg-red-400'}`}
+            className={`rounded-full transition-all duration-100 ease-out hover:cursor-pointer ${muted ? 'bg-gray-200 hover:bg-red-300' : 'bg-red-500 hover:bg-red-300'}`}
             onClick={toggleMute}
             style={{
               width: `${diameter}px`,
