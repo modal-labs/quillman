@@ -21,7 +21,45 @@ const App = () => {
   const [pendingSentence, setPendingSentence] = useState('');
   const [warmupComplete, setWarmupComplete] = useState(false);
   const [amplitude, setAmplitude] = useState(0);
+  const [audioContext] = useState(() => new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 }));
+  
+  const sourceNodeRef = useRef(null);
+  const scheduledEndTimeRef = useRef(0);
+  const decoderRef = useRef(null);
 
+  const scheduleAudioPlayback = (newAudioData) => {
+    const sampleRate = audioContext.sampleRate;
+    const numberOfChannels = 1;
+    const nowTime = audioContext.currentTime;
+  
+    // Create a new buffer for the incoming audio data
+    const newBuffer = audioContext.createBuffer(numberOfChannels, newAudioData.length, sampleRate);
+    newBuffer.copyToChannel(newAudioData, 0);
+  
+    // Create a new source node for this piece of audio
+    const sourceNode = audioContext.createBufferSource();
+    sourceNode.buffer = newBuffer;
+    sourceNode.connect(audioContext.destination);
+  
+    // Schedule the new audio to play immediately after any currently playing audio
+    const startTime = Math.max(scheduledEndTimeRef.current, nowTime);
+    sourceNode.start(startTime);
+  
+    // Update the scheduled end time
+    scheduledEndTimeRef.current = startTime + newBuffer.duration;
+  
+    // Clean up the previous source node if it exists and has ended
+    if (sourceNodeRef.current && sourceNodeRef.current.buffer) {
+      const currentEndTime = sourceNodeRef.current.startTime + sourceNodeRef.current.buffer.duration;
+      if (currentEndTime <= nowTime) {
+        sourceNodeRef.current.disconnect();
+      }
+    }
+  
+    // Update the current source node reference
+    sourceNodeRef.current = sourceNode;
+  };
+  
   // start recording
   const startRecording = async () => {
     // used to get permission to use microphone
@@ -53,7 +91,6 @@ const App = () => {
     });
 
     // create a MediaRecorder object for capturing PCM (calculating amplitude)
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const analyzer = audioContext.createAnalyser();
     analyzer.fftSize = 256;
     const sourceNode = audioContext.createMediaStreamSource(stream);
@@ -68,12 +105,27 @@ const App = () => {
     mediaRecorder.start(10);
   };
 
+  // prep context and decoder for audio playback
+  useEffect(() => {
+    const initializeDecoder = async () => {
+      const decoder = new window["ogg-opus-decoder"].OggOpusDecoder();
+      await decoder.ready;
+      decoderRef.current = decoder;
+      console.log("Ogg Opus decoder initialized");
+    };
+  
+    initializeDecoder();
+  
+    return () => {
+      if (decoderRef.current) {
+        decoderRef.current.free();
+      }
+    };
+  }, []);
+
+
   // open websocket connection
   useEffect(() => {
-
-    // startRecording(); // temporary erik!
-    // return; // temporary erik!
-
     const endpoint = getBaseURL();
     console.log("Connecting to", endpoint);
     const socket = new WebSocket(endpoint);
@@ -93,7 +145,10 @@ const App = () => {
       const payload = arrayBuffer.slice(1);
       if (tag === 1) {
         // audio data
-        // console.log("Received audio data", payload.byteLength, "bytes");
+        const { channelData, samplesDecoded, sampleRate } = await decoderRef.current.decode(new Uint8Array(payload));
+        if (samplesDecoded > 0) {
+          scheduleAudioPlayback(channelData[0]);
+        }
       }
       if (tag === 2) {
         // text data
