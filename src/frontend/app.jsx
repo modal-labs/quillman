@@ -3,9 +3,6 @@ const { useRef, useEffect, useState } = React;
 const baseURL = "" // points to whatever is serving this app (eg your -dev.modal.run for modal serve, or .modal.run for modal deploy)
 
 const getBaseURL = () => {
-  return "wss://erik-dunteman--quillman-moshi-web-dev.modal.run/ws"; // temporary erik!
-  // erik todo for tomorrow, look at moshi repo frontend! the playback's gotta be in there.
-
   // use current web app server domain to construct the url for the moshi app
   const currentURL = new URL(window.location.href);
   let hostname = currentURL.hostname;
