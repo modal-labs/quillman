@@ -26,16 +26,9 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 - A [Modal](http://modal.com/) account
 - A Modal token set up in your environment (`modal token new`)
 
-### Installing dependencies
-```shell
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements/requirements.txt
-```
-
 ### Developing the inference module
 
-The Moshi server is a [Modal class](https://modal.com/docs/reference/modal.Cls#modalcls) module to load the model and maintain streaming state, with a [FastAPI](https://fastapi.tiangolo.com/) http server to expose a websocket interface over the internet.
+The Moshi server is a [Modal class](https://modal.com/docs/reference/modal.Cls#modalcls) module to load the models and maintain streaming state, with a [FastAPI](https://fastapi.tiangolo.com/) http server to expose a websocket interface over the internet.
 
 To run a [development server]((https://modal.com/docs/guide/webhooks#developing-with-modal-serve)) for the Moshi module, run this command from the root of the repo.
 
@@ -48,12 +41,12 @@ In the terminal output, you'll find a URL for creating a websocket connection.
 While the `modal serve` process is running, changes to any of the project files will be automatically applied. `Ctrl+C` will stop the app. 
 
 ### Testing the websocket connection
-From a seperate terminal, we can test the websocket connection directly from the command line.
+From a seperate terminal, we can test the websocket connection directly from the command line with the `tests/moshi_client.py` client.
 
-`tests/moshi_client.py` contains a client, which can be used to speak with the model across a websocket connection.
-
-This client requires non-standard dependencies, which can be installed with:
+It requires non-standard dependencies, which can be installed with:
 ```shell
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements/requirements-dev.txt
 ```
 
@@ -76,7 +69,6 @@ modal serve src.app
 
 Since `src/app.py` imports the `src/moshi.py` module, this also starts the Moshi websocket server.
 
-
 In the terminal output, you'll find a URL that you can visit to use your app. Note that for frontend changes, the browser cache will need to be cleared.
 
 ### Deploying to Modal
@@ -86,5 +78,7 @@ Once you're happy with your changes, [deploy](https://modal.com/docs/guide/manag
 ```shell
 modal deploy src.app
 ```
+
+This will deploy both the frontend server and the Moshi websocket server.
 
 Note that leaving the app deployed on Modal doesn't cost you anything! Modal apps are serverless and scale to 0 when not in use.
