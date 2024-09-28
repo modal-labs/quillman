@@ -1,10 +1,14 @@
 # QuiLLMan: Voice Chat with LLMs
 
-A complete chat app that transcribes audio in real-time, streams back a response from a language model, and synthesizes this response as natural-sounding speech.
+A complete voice chat app powered by a speech-to-speech language model and bidirectional streaming.
 
 This repo is meant to serve as a starting point for your own language model-based apps, as well as a playground for experimentation. Contributions are welcome and encouraged!
 
-OpenAI [Whisper V3](https://huggingface.co/openai/whisper-large-v3) is used to produce a transcript, which is then passed into the [Llama 3.1 8B Instruct](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct) language model to generate a response, which is then synthesized by Coqui's [XTTS](https://github.com/coqui-ai/TTS) text-to-speech model. All together, this produces a voice-to-voice chat experience.
+On the backend is Kyutai Lab's [Moshi](https://github.com/kyutai-labs/moshi) model, which will continuously listen, process, plan, and respond to a the user. 
+
+Moshi uses the [Mimi](https://huggingface.co/kyutai/mimi) streaming encoder/decoder model to maintain an unbroken stream of audio in and out. The encoded audio is processed by a [speech-text foundation model](https://huggingface.co/kyutai/moshiko-pytorch-bf16), which uses an internal monologue to determine when and how to respond.
+
+Thanks to bidirectional websocket streaming and use of the Opus audio codec for compressing audio across the network, response times can feel nearly instantaneous, closely matching the cadence of human speech.
 
 You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 
@@ -14,9 +18,7 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 
 1. React frontend ([`src/frontend/`](./src/frontend/))
 2. FastAPI server ([`src/app.py`](./src/app.py))
-3. Whisper transcription module ([`src/whisper.py`](./src/whisper.py))
-4. XTTS text-to-speech module ([`src/xtts.py`](./src/xtts.py))
-5. LLaMA 3.1 text generation module ([`src/llama.py`](./src/llama.py))
+3. Moshi websocket server ([`src/moshi.py`](./src/moshi.py))
 
 ## Developing locally
 
@@ -26,29 +28,58 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 - A [Modal](http://modal.com/) account
 - A Modal token set up in your environment (`modal token new`)
 
-### Developing the inference modules
-
-Whisper, XTTS, and Llama each have a [`local_entrypoint`](https://modal.com/docs/reference/modal.App#local_entrypoint) method that is invoked when you run that file directly. 
-This is useful for testing each module standalone, without needing to run the whole app.
-
-For example, to test the Whisper transcription module, run:
+### Installing dependencies
 ```shell
-modal run -q src.whisper
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements/requirements.txt
 ```
+
+### Developing the inference module
+
+The Moshi server is a [Modal class](https://modal.com/docs/reference/modal.Cls#modalcls) module to load the model and maintain streaming state, with a [FastAPI](https://fastapi.tiangolo.com/) http server to expose a websocket interface over the internet.
+
+To run a [development server]((https://modal.com/docs/guide/webhooks#developing-with-modal-serve)) for the Moshi module, run this command from the root of the repo.
+
+```shell
+modal serve src.moshi
+```
+
+In the terminal output, you'll find a URL for creating a websocket connection.
+
+While the `modal serve` process is running, changes to any of the project files will be automatically applied. `Ctrl+C` will stop the app. 
+
+### Testing the websocket connection
+From a seperate terminal, we can test the websocket connection directly from the command line.
+
+`tests/moshi_client.py` contains a client, which can be used to speak with the model across a websocket connection.
+
+This client requires non-standard dependencies, which can be installed with:
+```shell
+pip install -r requirements/requirements-dev.txt
+```
+
+With dependencies installed, run the terminal client with:
+```shell
+python tests/moshi_client.py
+```
+
+And begin speaking! Be sure to have your microphone and speakers enabled.
 
 ### Developing the http server and frontend
 
-The http server at `src/app.py` is a [FastAPI](https://fastapi.tiangolo.com/) app that chains the inference modules into a single pipeline.
+The http server at `src/app.py` is a second [FastAPI](https://fastapi.tiangolo.com/) app, for serving the frontend as static files.
 
-It also serves the frontend as static files.
-
-To run a [development server]((https://modal.com/docs/guide/webhooks#developing-with-modal-serve)), execute this command from the root directory of this repo:
+A [development server]((https://modal.com/docs/guide/webhooks#developing-with-modal-serve)) can be run with:
 
 ```shell
 modal serve src.app
 ```
 
-In the terminal output, you'll find a URL that you can visit to use your app. While the `modal serve` process is running, changes to any of the project files will be automatically applied. `Ctrl+C` will stop the app. Note that for frontend changes, the browser cache will need to be cleared.
+Since `src/app.py` imports the `src/moshi.py` module, this also starts the Moshi websocket server.
+
+
+In the terminal output, you'll find a URL that you can visit to use your app. Note that for frontend changes, the browser cache will need to be cleared.
 
 ### Deploying to Modal
 
