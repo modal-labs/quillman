@@ -4,11 +4,9 @@ A complete voice chat app powered by a speech-to-speech language model and bidir
 
 This repo is meant to serve as a starting point for your own language model-based apps, as well as a playground for experimentation. Contributions are welcome and encouraged!
 
-On the backend is Kyutai Lab's [Moshi](https://github.com/kyutai-labs/moshi) model, which will continuously listen, process, plan, and respond to a the user. 
+On the backend is Kyutai Lab's [Moshi](https://github.com/kyutai-labs/moshi) model, which will continuously listen, process, plan, and respond to a the user. It uses the [Mimi](https://huggingface.co/kyutai/mimi) streaming encoder/decoder model to maintain an unbroken stream of audio in and out, and a [speech-text foundation model](https://huggingface.co/kyutai/moshiko-pytorch-bf16) to determine when and how to respond.
 
-Moshi uses the [Mimi](https://huggingface.co/kyutai/mimi) streaming encoder/decoder model to maintain an unbroken stream of audio in and out. The encoded audio is processed by a [speech-text foundation model](https://huggingface.co/kyutai/moshiko-pytorch-bf16), which uses an internal monologue to determine when and how to respond.
-
-Thanks to bidirectional websocket streaming and use of the Opus audio codec for compressing audio across the network, response times can feel nearly instantaneous, closely matching the cadence of human speech.
+Thanks to bidirectional websocket streaming and use of the Opus audio codec for compressing audio across the network, response times can be nearly instantaneous, closely matching the cadence of human speech.
 
 You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 
