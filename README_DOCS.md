@@ -125,4 +125,4 @@ modal deploy src.app
 
 ## Steal this example
 
-The code for this entire example is [available on GitHub](https://github.com/modal-labs/quillman). Have fun!
+The code for this entire example is [available on GitHub](https://github.com/modal-labs/quillman), so feel free to fork it and make it your own!
