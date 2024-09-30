@@ -1,18 +1,20 @@
-# **QuiLLMan: Voice Chat with LLMs**
+# QuiLLMan: Voice Chat with LLMs
 
 [QuiLLMan](https://github.com/modal-labs/quillman) is a complete voice chat application built on Modal: you speak and the chatbot speaks back!
 
 At the core is Kyutai Lab's [Moshi](https://github.com/kyutai-labs/moshi) model, a speech-to-speech language model that will continuously listen, plan, and respond to the user.
 
-Thanks to bidirectional websocket streaming and [Opus audio compression](https://opus-codec.org/), response times from the model across decent internet can closely match the cadence of human speech.
+Thanks to bidirectional websocket streaming and [Opus audio compression](https://opus-codec.org/), response times on good internet can be nearly instantaneous, closely matching the cadence of human speech.
 
-We’ve enjoyed playing around with QuiLLMan enough at Modal HQ that we decided to [share the repo](https://github.com/modal-labs/quillman) and put up [a live demo](https://modal-labs--quillman-web.modal.run/).
+You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 
-Everything — the React frontend and the model backend — is deployed serverlessly, allowing it to automatically scale and ensuring you only pay for the compute you use. Read on to see how Modal makes this easy!
+![Quillman](https://github.com/user-attachments/assets/afda5874-8509-4f56-9f25-d734b8f1c40a)
 
-This post provides a high-level walkthrough of the [repo](https://github.com/modal-labs/quillman). We’re looking to add more models and features to this as time goes on, and contributions are welcome!
+Everything — the React frontend and the model backend — is deployed serverlessly, allowing it to automatically scale and ensuring you only pay for the compute you use. 
 
-## **Code overview**
+This post provides a high-level walkthrough of the [github repo](https://github.com/modal-labs/quillman). We’re looking to add more models and features to this as time goes on, and contributions are welcome!
+
+## Code overview
 
 Traditionally, building a bidirectional streaming web application as compute-heavy as QuiLLMan would take a lot of work, and is especially difficult to make it robust and scale to handle many concurrent users.
 
@@ -20,34 +22,32 @@ But with Modal, it’s as simple as writing two different classes and running a 
 
 Our project structure looks like this:
 
-1. [Moshi websocket server](https://modal.com/docs/examples/llm-voice-chat#language-model): loads an instance of the Moshi model and maintains a bidirectional websocket connection with the client via a [FastAPI Server](https://modal.com/docs/examples/llm-voice-chat#fastapi-server).
-2. [React frontend](https://modal.com/docs/examples/llm-voice-chat#react-frontend): runs client-side interaction logic, also served via [FastAPI Server](https://modal.com/docs/examples/llm-voice-chat#fastapi-server).
+1. [Moshi Websocket Server](https://modal.com/docs/examples/llm-voice-chat#moshi-websocket-server): loads an instance of the Moshi model and maintains a bidirectional websocket connection with the client.
+2. [React Frontend](https://modal.com/docs/examples/llm-voice-chat#react-frontend): runs client-side interaction logic.
 
 Let’s go through each of these components in more detail.
 
-You’ll want to have the code handy — look for GitHub links in this guide to see the code for each component.
-
-### **FastAPI Server**
+### FastAPI Server
 
 Both frontend and backend are served via a [FastAPI Server](https://fastapi.tiangolo.com/), which is a popular Python web framework for building REST APIs.
 
-On Modal, a function or class method can be exposed as a web endpoint by decorating it with the `@app.asgi_app()` [decorator](https://modal.com/docs/reference/modal.asgi_app#modalasgi_app) and returning an [FastAPI](https://fastapi.tiangolo.com/) app. You're then free to configure the FastAPI server however you like, including adding middleware, serving static files, and running websockets.
+On Modal, a function or class method can be exposed as a web endpoint by decorating it with [`@app.asgi_app()`](https://modal.com/docs/reference/modal.asgi_app#modalasgi_app) and returning a FastAPI app. You're then free to configure the FastAPI server however you like, including adding middleware, serving static files, and running websockets.
 
-### **Language Model**
+### Moshi Websocket Server
 
-The backend is built on Kyutai Lab's [Moshi](https://github.com/kyutai-labs/moshi), a speech-to-speech language model built for streaming.
+Traditionally, a speech-to-speech chat app requires three distinct modules: speech-to-text, text-to-text, and text-to-speech. Passing data between these modules introduces bottlenecks, and can limit the speed of the app and forces a turn-by-turn conversation which can feel unnatural.
 
-Traditionally, a speech-to-speech chat app requires three distinct modules: speech-to-text, text-to-text, and text-to-speech. Passing data between these modules quickly introduces bottlenecks, and can limit the speed of the app. Moshi bundling all modalities in one model decreases latency, and makes for a much simpler app.
+Kyutai Lab's [Moshi](https://github.com/kyutai-labs/moshi) bundles all modalities into one model, which decreases latency and makes for a much simpler app.
 
 Under the hood, Moshi uses the [Mimi](https://huggingface.co/kyutai/mimi) streaming encoder/decoder model to maintain an unbroken stream of audio in and out. The encoded audio is processed by a [speech-text foundation model](https://huggingface.co/kyutai/moshiko-pytorch-bf16), which uses an internal monologue to determine when and how to respond.
 
-This streaming model introduces a few challenges not normally seen in inference backends:
-1. The model is *stateful*, meaning it maintains context for the conversation so far. This requires a unique model instance for each user conversation, a GPU per user session, which is normally not an easy feat.
-2. The model is *streaming*, so it's not as simple as a POST request. We must find a way to stream audio data in and out, and do it faster than human speech so playback is seamless.
+Using a streaming model introduces a few challenges not normally seen in inference backends:
+1. The model is *stateful*, meaning it maintains context of the conversation so far. This means a model instance cannot be shared between user conversations, so we must run a unique GPU per user session, which is normally not an easy feat!
+2. The model is *streaming*, so the interface around it is not as simple as a POST request. We must find a way to stream audio data in and out, and do it fast enough for seamless playback.
 
 We solve both of these in `src/moshi.py`, using a few Modal features:
 
-**For the stateful model**, we maintain a 1:1 mapping of users to GPUs simply by limiting concurrent connections to one, with the `allow_concurrent_inputs` parameter.
+To solve statefulness, we maintain a 1:1 mapping of users to GPUs simply by limiting concurrent connections to one, with the `allow_concurrent_inputs` parameter.
 
 ```python
 @app.cls(
@@ -62,7 +62,7 @@ class Moshi:
 
 With this setting, if a new user connects, a new GPU instance is created!  When any user disconnects, the state of their model is reset and that GPU instance is returned to the warm pool for re-use. Be aware that a GPU per user is not going to be cheap, but it's the simplest way to ensure user sessions are isolated and GPU resources are not contested.
 
-**For streaming**, we use FastAPI's support for bidirectional websockets, which allows clients to establish a single connection at the start of their session, and stream audio data both ways.
+For solving streaming, we use FastAPI's support for bidirectional websockets. This allows clients to establish a single connection at the start of their session, and stream audio data both ways.
 
 Just as a FastAPI server can run from a Modal function, it can also be attached to a Modal class method, allowing us to couple a prewarmed Moshi model to a websocket session. 
 
@@ -72,7 +72,6 @@ Just as a FastAPI server can run from a Modal function, it can also be attached 
         from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 
         web_app = FastAPI()
-
         @web_app.websocket("/ws")
         async def websocket(ws: WebSocket):
             with torch.no_grad():
@@ -101,9 +100,9 @@ modal serve src.moshi
 
 In the terminal output, you'll find a URL for creating a websocket connection.
 
-### **React Frontend**
+### React Frontend
 
-The frontend is a static React app, served rom `src/app.py` and can be found in the  `src/frontend` directory.
+The frontend is a static React app, found in the  `src/frontend` directory and served by `src/app.py`.
 
 We use the [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) to record audio from the user's microphone and playback audio responses from the model. 
 
@@ -114,8 +113,16 @@ To serve the frontend assets, run this command from the root of the repo.
 modal serve src.app
 ```
 
-This also spins up an endpoint for the Moshi websocket server.
+Since `src/app.py` imports the `src/moshi.py` module, this `serve` command also serves the Moshi websocket server as its own endpoint.
 
-## **Steal this example**
+## Deploy
+
+When you're ready to go live, use the `deploy` command to deploy the app to Modal.
+
+```shell
+modal deploy src.app
+```
+
+## Steal this example
 
 The code for this entire example is [available on GitHub](https://github.com/modal-labs/quillman). Follow the instructions in the README for how to run or deploy it yourself on Modal.
