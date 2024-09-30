@@ -53,7 +53,7 @@ To solve statefulness, we maintain a 1:1 mapping of users to GPUs simply by limi
 @app.cls(
     image=image,
     gpu="A10G",
-    ...,
+    # ...,
     allow_concurrent_inputs=1, # ensure only one user at a time
 )
 class Moshi:
