@@ -8,6 +8,8 @@ Thanks to bidirectional websocket streaming and use of the [Opus audio codec](ht
 
 You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 
+![Quillman](https://github.com/user-attachments/assets/a54ec9f5-6fbc-4166-b246-5fb00b043373)
+
 This repo is meant to serve as a starting point for your own language model-based apps, as well as a playground for experimentation. Contributions are welcome and encouraged!
 
 [Note: this code is provided for illustration only; please remember to check the license before using any model for commercial purposes.]
