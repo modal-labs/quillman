@@ -16,9 +16,8 @@ This repo is meant to serve as a starting point for your own language model-base
 
 ## File structure
 
-1. React frontend ([`src/frontend/`](./src/frontend/))
-2. FastAPI server ([`src/app.py`](./src/app.py))
-3. Moshi websocket server ([`src/moshi.py`](./src/moshi.py))
+1. React frontend ([`src/frontend/`](./src/frontend/)), served by [`src/app.py`](./src/app.py)
+2. Moshi websocket server ([`src/moshi.py`](./src/moshi.py))
 
 ## Developing locally
 
