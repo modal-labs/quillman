@@ -23,5 +23,4 @@ jobs:
       - name: Deploy
         run: |
           modal token set --token-id $MODAL_TOKEN_ID --token-secret $MODAL_TOKEN_SECRET
-          modal run src.fillers::Fillers.prefill
           modal deploy
