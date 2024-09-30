@@ -25,7 +25,7 @@ This repo is meant to serve as a starting point for your own language model-base
 ### Requirements
 
 - `modal` installed in your current Python virtual environment (`pip install modal`)
-- A [Modal](http://modal.com/) account
+- A [Modal](http://modal.com/) account (`modal setup`)
 - A Modal token set up in your environment (`modal token new`)
 
 ### Developing the inference module
@@ -71,7 +71,10 @@ modal serve src.app
 
 Since `src/app.py` imports the `src/moshi.py` module, this also starts the Moshi websocket server.
 
-In the terminal output, you'll find a URL that you can visit to use your app. Note that for frontend changes, the browser cache will need to be cleared.
+In the terminal output, you'll find a URL that you can visit to use your app. 
+While the `modal serve` process is running, changes to any of the project files will be automatically applied. `Ctrl+C` will stop the app. 
+
+Note that for frontend changes, the browser cache may need to be cleared.
 
 ### Deploying to Modal
 
