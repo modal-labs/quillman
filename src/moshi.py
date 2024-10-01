@@ -1,6 +1,6 @@
-'''
+"""
 Moshi websocket web service.
-'''
+"""
 
 import modal
 import asyncio
@@ -27,12 +27,13 @@ with image.imports():
     import sphn
     import numpy as np
 
+
 @app.cls(
     image=image,
     gpu="A10G",
     container_idle_timeout=300,
     timeout=600,
-    allow_concurrent_inputs=1, # websocket connection must be unique to avoid GPU conflicts
+    allow_concurrent_inputs=1,  # websocket connection must be unique to avoid GPU conflicts
 )
 class Moshi:
     @modal.build()
@@ -55,24 +56,28 @@ class Moshi:
         self.lm_gen = LMGen(
             self.moshi,
             # Sampling params
-            temp = 0.8,
-            temp_text = 0.8,
-            top_k = 250,
-            top_k_text = 25,
+            temp=0.8,
+            temp_text=0.8,
+            top_k=250,
+            top_k_text=25,
         )
 
         self.mimi.streaming_forever(1)
         self.lm_gen.streaming_forever(1)
 
-        tokenizer_config = hf_hub_download(loaders.DEFAULT_REPO, loaders.TEXT_TOKENIZER_NAME)
+        tokenizer_config = hf_hub_download(
+            loaders.DEFAULT_REPO, loaders.TEXT_TOKENIZER_NAME
+        )
         self.text_tokenizer = sentencepiece.SentencePieceProcessor(tokenizer_config)
 
         # Warmup them GPUs
         for chunk in range(4):
-            chunk = torch.zeros(1, 1, self.frame_size, dtype=torch.float32, device=self.device)
+            chunk = torch.zeros(
+                1, 1, self.frame_size, dtype=torch.float32, device=self.device
+            )
             codes = self.mimi.encode(chunk)
             for c in range(codes.shape[-1]):
-                tokens = self.lm_gen.step(codes[:, :, c: c + 1])
+                tokens = self.lm_gen.step(codes[:, :, c : c + 1])
                 if tokens is None:
                     continue
                 _ = self.mimi.decode(tokens[:, 1:])
@@ -99,16 +104,16 @@ class Moshi:
                 await ws.accept()
 
                 # Clear model chat history and any buffered audio
-                self.reset_state() 
+                self.reset_state()
 
                 print("Session started")
                 tasks = []
 
                 # We use asyncio to run multiple loops concurrently, within the context of this single websocket connection
                 async def recv_loop():
-                    '''
+                    """
                     Receives Opus stream across websocket, appends into opus_stream_inboun
-                    '''
+                    """
                     while True:
                         data = await ws.receive_bytes()
 
@@ -121,9 +126,9 @@ class Moshi:
                         self.opus_stream_inbound.append_bytes(data)
 
                 async def inference_loop():
-                    '''
+                    """
                     Runs streaming inference on inbound data, and if any response audio is created, appends it to the outbound stream
-                    '''
+                    """
                     all_pcm_data = None
                     while True:
                         await asyncio.sleep(0.001)
@@ -145,18 +150,18 @@ class Moshi:
                             t0 = time.time()
 
                             chunk = all_pcm_data[: self.frame_size]
-                            all_pcm_data = all_pcm_data[self.frame_size:]
+                            all_pcm_data = all_pcm_data[self.frame_size :]
 
                             chunk = torch.from_numpy(chunk)
                             chunk = chunk.to(device=self.device)[None, None]
-                            
+
                             # inference on audio chunk
                             codes = self.mimi.encode(chunk)
-                            
+
                             # language model inference against encoded audio
                             for c in range(codes.shape[-1]):
-                                tokens = self.lm_gen.step(codes[:, :, c: c + 1])
-                                
+                                tokens = self.lm_gen.step(codes[:, :, c : c + 1])
+
                                 if tokens is None:
                                     # model is silent
                                     continue
@@ -164,19 +169,23 @@ class Moshi:
                                 assert tokens.shape[1] == self.lm_gen.lm_model.dep_q + 1
                                 main_pcm = self.mimi.decode(tokens[:, 1:])
                                 main_pcm = main_pcm.cpu()
-                                self.opus_stream_outbound.append_pcm(main_pcm[0, 0].numpy())
-                                
+                                self.opus_stream_outbound.append_pcm(
+                                    main_pcm[0, 0].numpy()
+                                )
+
                                 text_token = tokens[0, 0, 0].item()
                                 if text_token not in (0, 3):
                                     text = self.text_tokenizer.id_to_piece(text_token)
                                     text = text.replace("▁", " ")
-                                    msg = b"\x02" + bytes(text, encoding="utf8") # prepend "\x02" as a tag to indicate text
+                                    msg = b"\x02" + bytes(
+                                        text, encoding="utf8"
+                                    )  # prepend "\x02" as a tag to indicate text
                                     await ws.send_bytes(msg)
 
                 async def send_loop():
-                    '''
+                    """
                     Reads outbound data, and sends it across websocket
-                    '''
+                    """
                     while True:
                         await asyncio.sleep(0.001)
                         msg = self.opus_stream_outbound.read_bytes()
@@ -184,7 +193,7 @@ class Moshi:
                             continue
                         if len(msg) == 0:
                             continue
-                        msg = b"\x01" + msg # prepend "\x01" as a tag to indicate audio
+                        msg = b"\x01" + msg  # prepend "\x01" as a tag to indicate audio
                         await ws.send_bytes(msg)
 
                 # This runs all the loops concurrently
@@ -192,10 +201,10 @@ class Moshi:
                     tasks = [
                         asyncio.create_task(recv_loop()),
                         asyncio.create_task(inference_loop()),
-                        asyncio.create_task(send_loop())
+                        asyncio.create_task(send_loop()),
                     ]
                     await asyncio.gather(*tasks)
-                
+
                 except WebSocketDisconnect:
                     print("WebSocket disconnected")
                     await ws.close(code=1000)
@@ -211,4 +220,3 @@ class Moshi:
                     self.reset_state()
 
         return web_app
-    
