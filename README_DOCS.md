@@ -2,137 +2,127 @@
 
 [QuiLLMan](https://github.com/modal-labs/quillman) is a complete voice chat application built on Modal: you speak and the chatbot speaks back!
 
-OpenAI's [Whisper V3](https://huggingface.co/openai/whisper-large-v3) is used to produce a transcript, which is then passed into the LLaMA 3.1 8B language model to generate a response, which is then synthesized by Coqui's [XTTS](https://github.com/coqui-ai/TTS) text-to-speech model. All together, this produces a voice-to-voice chat experience.
+At the core is Kyutai Lab's [Moshi](https://github.com/kyutai-labs/moshi) model, a speech-to-speech language model that will continuously listen, plan, and respond to the user.
 
-We’ve enjoyed playing around with QuiLLMan enough at Modal HQ that we decided to [share the repo](https://github.com/modal-labs/quillman) and put up [a live demo](https://modal-labs--quillman-web.modal.run/).
+Thanks to bidirectional websocket streaming and [Opus audio compression](https://opus-codec.org/), response times on good internet can be nearly instantaneous, closely matching the cadence of human speech.
 
-Everything — the React frontend, the backend API, the LLMs — is deployed serverlessly, allowing it to automatically scale and ensuring you only pay for the compute you use. Read on to see how Modal makes this easy!
+You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 
-This post provides a high-level walkthrough of the [repo](https://github.com/modal-labs/quillman). We’re looking to add more models and features to this as time goes on, and contributions are welcome!
+![Quillman](https://github.com/user-attachments/assets/afda5874-8509-4f56-9f25-d734b8f1c40a)
+
+Everything — the React frontend and the model backend — is deployed serverlessly, allowing it to automatically scale and ensuring you only pay for the compute you use. 
+
+This post provides a high-level walkthrough of the [github repo](https://github.com/modal-labs/quillman). We’re looking to add more models and features to this as time goes on, and contributions are welcome!
 
 ## Code overview
 
-Traditionally, building a robust serverless web application as complex as QuiLLMan would require a lot of work — you’re setting up a backend API and three different inference modules, running in separate custom containers and autoscaling independently.
+Traditionally, building a bidirectional streaming web application as compute-heavy as QuiLLMan would take a lot of work, and is especially difficult to make it robust and scale to handle many concurrent users.
 
-But with Modal, it’s as simple as writing 4 different classes and running a CLI command.
+But with Modal, it’s as simple as writing two different classes and running a CLI command.
 
 Our project structure looks like this:
 
-1. [Language model module](#language-model-module---llama-31-8b): continues a text conversation with a text reply.
-2. [Transcription module](#transcription-module---whisper-v3): converts speech audio into text.
-3. [Text-to-speech module](#text-to-speech-module---xtts): converts text into speech.
-4. [FastAPI server](#fastapi-backend): runs server-side app logic.
-5. [React frontend](#react-frontend): runs client-side interaction logic.
+1. [Moshi Websocket Server](https://modal.com/docs/examples/llm-voice-chat#moshi-websocket-server): loads an instance of the Moshi model and maintains a bidirectional websocket connection with the client.
+2. [React Frontend](https://modal.com/docs/examples/llm-voice-chat#react-frontend): runs client-side interaction logic.
 
 Let’s go through each of these components in more detail.
 
-### Language model module - LLaMA 3.1 8B
+### FastAPI Server
 
-Language models are trained to predict what text will come at the end of incomplete text. From this simple task emerge the sparks of artificial general intelligence.
+Both frontend and backend are served via a [FastAPI Server](https://fastapi.tiangolo.com/), which is a popular Python web framework for building REST APIs.
 
-In this case, we want to predict the text that a helpful, friendly assistant might write to continue a conversation with a user.
+On Modal, a function or class method can be exposed as a web endpoint by decorating it with [`@app.asgi_app()`](https://modal.com/docs/reference/modal.asgi_app#modalasgi_app) and returning a FastAPI app. You're then free to configure the FastAPI server however you like, including adding middleware, serving static files, and running websockets.
 
-As with all Modal applications, we start by describing the environment (the container `Image`), which we construct via Python method chaining:
+### Moshi Websocket Server
 
-```python
-llama_image = (
-    modal.Image.debian_slim(python_version="3.10")
-        .pip_install(
-            "transformers==4.44.2",
-            "vllm==0.6.0",
-            "torch==2.4.0",
-            "hf_transfer==0.1.8",
-            "huggingface_hub==0.24.6",
-            )
-        .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"}))
-```
+Traditionally, a speech-to-speech chat app requires three distinct modules: speech-to-text, text-to-text, and text-to-speech. Passing data between these modules introduces bottlenecks, and can limit the speed of the app and forces a turn-by-turn conversation which can feel unnatural.
 
-The chain starts with a base Debian container with Python 3.10,
-then uses [`pip` to `install` our Python packages we need](https://modal.com/docs/reference/modal.Image#pip_install).
-Pinning versions of our dependencies improves the reproducibility of the image.
+Kyutai Lab's [Moshi](https://github.com/kyutai-labs/moshi) bundles all modalities into one model, which decreases latency and makes for a much simpler app.
 
-We use [vLLM](https://github.com/vllm-project/vllm), a high-performance open-source library for running large language models on CPUs and GPUs, to run the LLaMA model.
-This server can continuously batch concurrent requests.
+Under the hood, Moshi uses the [Mimi](https://huggingface.co/kyutai/mimi) streaming encoder/decoder model to maintain an unbroken stream of audio in and out. The encoded audio is processed by a [speech-text foundation model](https://huggingface.co/kyutai/moshiko-pytorch-bf16), which uses an internal monologue to determine when and how to respond.
 
-The models we use define a `generate` function that constructs an input to our language model from a prompt template, the conversation history, and the latest text from the user. Then, it `yield`s (streams) words as they are produced. Remote Python generators work out-of-the-box in Modal, so building streaming interactions is easy.
+Using a streaming model introduces a few challenges not normally seen in inference backends:
+1. The model is *stateful*, meaning it maintains context of the conversation so far. This means a model instance cannot be shared between user conversations, so we must run a unique GPU per user session, which is normally not an easy feat!
+2. The model is *streaming*, so the interface around it is not as simple as a POST request. We must find a way to stream audio data in and out, and do it fast enough for seamless playback.
 
-Although we’re going to call this model from our backend API, it’s useful to test it directly as well.
-To get a basic "smoke test" going, we define a [`local_entrypoint`](https://modal.com/docs/guide/apps#entrypoints-for-ephemeral-apps):
+We solve both of these in `src/moshi.py`, using a few Modal features:
+
+To solve statefulness, we maintain a 1:1 mapping of users to GPUs simply by limiting concurrent connections to one, with the `allow_concurrent_inputs` parameter.
 
 ```python
-@app.local_entrypoint()
-def main(prompt: str):
-    model = Llama()
-    for val in model.generate.remote_gen(prompt):
-        print(val, end="", flush=True)
+@app.cls(
+    image=image,
+    gpu="A10G",
+    # ...,
+    allow_concurrent_inputs=1, # ensure only one user at a time
+)
+class Moshi:
+    # ...
 ```
 
-Now, we can [`modal run`](https://modal.com/docs/guide/apps#ephemeral-apps) the model with a prompt of our choice from the terminal:
+With this setting, if a new user connects, a new GPU instance is created!  When any user disconnects, the state of their model is reset and that GPU instance is returned to the warm pool for re-use. Be aware that a GPU per user is not going to be cheap, but it's the simplest way to ensure user sessions are isolated and GPU resources are not contested.
 
-```bash
-modal run -q src.llama --prompt "Why do computers get hot?"
+For solving streaming, we use FastAPI's support for bidirectional websockets. This allows clients to establish a single connection at the start of their session, and stream audio data both ways.
+
+Just as a FastAPI server can run from a Modal function, it can also be attached to a Modal class method, allowing us to couple a prewarmed Moshi model to a websocket session. 
+
+```python
+    @modal.asgi_app()
+    def web(self):
+        from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
+
+        web_app = FastAPI()
+        @web_app.websocket("/ws")
+        async def websocket(ws: WebSocket):
+            with torch.no_grad():
+                await ws.accept()
+
+                # handle user session
+
+                # spawn loops for async IO
+                async def recv_loop():
+                    while True:
+                        data = await ws.receive_bytes()
+                        # send data into inference stream...
+                
+                async def send_loop():
+                    while True:
+                        await asyncio.sleep(0.001)
+                        msg = self.opus_stream_outbound.read_bytes()
+                        # send inference output to user ...
 ```
 
-### Transcription module - Whisper V3
+To run a [development server]((https://modal.com/docs/guide/webhooks#developing-with-modal-serve)) for the Moshi module, run this command from the root of the repo.
 
-In the Whisper module, we define a Modal class that uses [OpenAI’s Whisper V3](https://huggingface.co/openai/whisper-large-v3) to transcribe audio in real-time.
+```shell
+modal serve src.moshi
+```
 
-To speed up transcription, we use [Flash Attention](https://github.com/Dao-AILab/flash-attention) kernels,
-which requires `nvcc`, the CUDA compiler.
-[Check out this guide](https://modal.com/docs/guide/cuda) for more on how to set up and use CUDA on Modal.
+In the terminal output, you'll find a URL for creating a websocket connection.
 
-We’re using an [A10G GPU](https://www.nvidia.com/en-us/data-center/products/a10-gpu/) for transcriptions, which lets us transcribe most segments in under 2 seconds.
+### React Frontend
 
-### Text-to-speech module - XTTS
+The frontend is a static React app, found in the  `src/frontend` directory and served by `src/app.py`.
 
-The text-to-speech module uses the Coqui [XTTS](https://github.com/coqui-ai/TTS) text-to-speech model
-offering a variety of voices and languages.
-We're able to parallelize the TTS generation by splitting transcripts into smaller chunks across multiple GPUs
+We use the [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) to record audio from the user's microphone and playback audio responses from the model. 
 
-### FastAPI backend
+For efficient audio transmission, we use the [Opus codec](https://opus-codec.org/) to compress audio across the network. Opus recording and playback are supported by the [opus-recorder](https://github.com/chris-rudmin/opus-recorder) and [ogg-opus-decoder](https://github.com/eshaz/wasm-audio-decoders/tree/master/src/ogg-opus-decoder) libraries.
 
-The file `app.py` contains a [FastAPI](https://fastapi.tiangolo.com/) app that chains the inference modules into a single pipeline.
-We can serve this app over the internet without any extra effort on top of writing the `localhost` version by slapping on an
-[`@asgi_app`](https://modal.com/docs/guide/webhooks#serving-asgi-and-wsgi-apps) decorator.
+To serve the frontend assets, run this command from the root of the repo.
+```shell
+modal serve src.app
+```
 
-We structure the pipeline to minimize the perceived latency for the user during conversations.
-Human conversations involve turn-taking with delays under one second,
-so that's our target.
+Since `src/app.py` imports the `src/moshi.py` module, this `serve` command also serves the Moshi websocket server as its own endpoint.
 
-We take advantage of the fact that transcription and generation proceed faster than real-time to reduce this latency.
+## Deploy
 
-While the user is speaking, we stream audio to the server in chunks, so most of the transcript is complete by the time the user finishes speaking.
+When you're ready to go live, use the `deploy` command to deploy the app to Modal.
 
-And text-to-speech happens faster than audio playback. So after we generate an initial speech response,
-either filler words or the first chunk of the language model's response,
-we can generate additional speech responses while the user is engaged in listening.
-
-We use these techniques in `/pipeline` to achieve this:
-
-1. The `/pipeline` endpoint is a [WebSocket](https://modal.com/docs/guide/webhooks#websockets) connection, enabling streaming audio in chunks.
-2. All intermediate data in the pipeline is streamed through Python generators between inference modules.
-3. We start transcribing before the user finishes speaking.
-4. The transcription is done in parallel using Modal [`spawn`](https://modal.com/docs/reference/modal.Function#spawn),
-   since each chunk is roughly independent.
-5. The text response generation is a Modal [remote generator function](https://modal.com/docs/reference/modal.Function#remote_gen),
-   streaming output as it's generated. Outputs can be fed into the text-to-speech module before the full transcript is available.
-6. The text-to-speech is done in parallel using Modal [`map`](https://modal.com/docs/reference/modal.Function#map), since each sentence is independent of the others.
-7. We stream synthesized audio back to the client as it's generated so the browser can start playback as soon as possible.
-
-In addition, we add a `/prewarm` endpoint, to be called by the client before they run the first `/pipeline` request. This ensures all on-GPU models are loaded and ready to go.
-
-### React frontend
-
-We use the [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API)
-to record snippets of audio from the user’s microphone.
-The file [`src/frontend/processor.js`](https://github.com/modal-labs/quillman/blob/main/src/frontend/processor.js)
-defines an [`AudioWorkletProcessor`](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletProcessor)
-that distinguishes between speech and silence and emits events for speech buffers so we can transcribe them.
-
-The frontend maintains a state machine to manage the state of the conversation.
-This is implemented with the help of the incredible [XState](https://github.com/statelyai/xstate) library.
+```shell
+modal deploy src.app
+```
 
 ## Steal this example
 
-The code for this entire example is [available on GitHub](https://github.com/modal-labs/quillman).
-Follow the instructions in the README to deploy it yourself on Modal.
+The code for this entire example is [available on GitHub](https://github.com/modal-labs/quillman), so feel free to fork it and make it your own!

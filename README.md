@@ -1,22 +1,23 @@
 # QuiLLMan: Voice Chat with LLMs
 
-A complete chat app that transcribes audio in real-time, streams back a response from a language model, and synthesizes this response as natural-sounding speech.
+A complete voice chat app powered by a speech-to-speech language model and bidirectional streaming.
 
-[This repo](https://github.com/modal-labs/quillman) is meant to serve as a starting point for your own language model-based apps, as well as a playground for experimentation. Contributions are welcome and encouraged!
+On the backend is Kyutai Lab's [Moshi](https://github.com/kyutai-labs/moshi) model, which will continuously listen, plan, and respond to a the user. It uses the [Mimi](https://huggingface.co/kyutai/mimi) streaming encoder/decoder model to maintain an unbroken stream of audio in and out, and a [speech-text foundation model](https://huggingface.co/kyutai/moshiko-pytorch-bf16) to determine when and how to respond.
 
-OpenAI [Whisper V3](https://huggingface.co/openai/whisper-large-v3) is used to produce a transcript, which is then passed into the [LLaMA 3.1 8B Instruct](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct) language model to generate a response, which is then synthesized by Coqui's [XTTS](https://github.com/coqui-ai/TTS) text-to-speech model. All together, this produces a voice-to-voice chat experience.
+Thanks to bidirectional websocket streaming and use of the [Opus audio codec](https://opus-codec.org/) for compressing audio across the network, response times on good internet can be nearly instantaneous, closely matching the cadence of human speech.
 
 You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
+
+![Quillman](https://github.com/user-attachments/assets/afda5874-8509-4f56-9f25-d734b8f1c40a)
+
+This repo is meant to serve as a starting point for your own language model-based apps, as well as a playground for experimentation. Contributions are welcome and encouraged!
 
 [Note: this code is provided for illustration only; please remember to check the license before using any model for commercial purposes.]
 
 ## File structure
 
-1. React frontend ([`src/frontend/`](./src/frontend/))
-2. FastAPI server ([`src/app.py`](./src/app.py))
-3. Whisper transcription module ([`src/whisper.py`](./src/whisper.py))
-4. XTTS text-to-speech module ([`src/xtts.py`](./src/xtts.py))
-5. LLaMA 3.1 text generation module ([`src/llama.py`](./src/llama.py))
+1. React frontend ([`src/frontend/`](./src/frontend/)), served by [`src/app.py`](./src/app.py)
+2. Moshi websocket server ([`src/moshi.py`](./src/moshi.py))
 
 ## Developing locally
 
@@ -26,31 +27,53 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 - A [Modal](http://modal.com/) account (`modal setup`)
 - A Modal token set up in your environment (`modal token new`)
 
-### Developing the inference modules
+### Developing the inference module
 
-Whisper, XTTS, and Llama each have a [`local_entrypoint`](https://modal.com/docs/reference/modal.App#local_entrypoint)
-that is invoked when you execute the module with `modal run`.
-This is useful for testing each module standalone, without needing to run the whole app.
+The Moshi server is a [Modal class](https://modal.com/docs/reference/modal.Cls#modalcls) module to load the models and maintain streaming state, with a [FastAPI](https://fastapi.tiangolo.com/) http server to expose a websocket interface over the internet.
 
-For example, to test the Whisper transcription module, run:
+To run a [development server]((https://modal.com/docs/guide/webhooks#developing-with-modal-serve)) for the Moshi module, run this command from the root of the repo.
 
 ```shell
-modal run -q src.whisper
+modal serve src.moshi
 ```
+
+In the terminal output, you'll find a URL for creating a websocket connection.
+
+While the `modal serve` process is running, changes to any of the project files will be automatically applied. `Ctrl+C` will stop the app. 
+
+### Testing the websocket connection
+From a seperate terminal, we can test the websocket connection directly from the command line with the `tests/moshi_client.py` client.
+
+It requires non-standard dependencies, which can be installed with:
+```shell
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements/requirements-dev.txt
+```
+
+With dependencies installed, run the terminal client with:
+```shell
+python tests/moshi_client.py
+```
+
+And begin speaking! Be sure to have your microphone and speakers enabled.
 
 ### Developing the http server and frontend
 
-The HTTP server at `src/app.py` is a [FastAPI](https://fastapi.tiangolo.com/) app that chains the inference modules into a single pipeline.
+The http server at `src/app.py` is a second [FastAPI](https://fastapi.tiangolo.com/) app, for serving the frontend as static files.
 
-It also serves the frontend as static files.
-
-To run a [development server](https://modal.com/docs/guide/webhooks#developing-with-modal-serve), execute this command from the root directory of this repo:
+A [development server]((https://modal.com/docs/guide/webhooks#developing-with-modal-serve)) can be run with:
 
 ```shell
 modal serve src.app
 ```
 
-In the terminal output, you'll find a URL that you can visit to use your app. While the `modal serve` process is running, changes to any of the project files will be automatically applied. `Ctrl+C` will stop the app.
+Since `src/app.py` imports the `src/moshi.py` module, this also starts the Moshi websocket server.
+
+In the terminal output, you'll find a URL that you can visit to use your app. 
+While the `modal serve` process is running, changes to any of the project files will be automatically applied. `Ctrl+C` will stop the app. 
+
+Note that for frontend changes, the browser cache may need to be cleared.
 
 ### Deploying to Modal
 
@@ -59,5 +82,7 @@ Once you're happy with your changes, [deploy](https://modal.com/docs/guide/manag
 ```shell
 modal deploy src.app
 ```
+
+This will deploy both the frontend server and the Moshi websocket server.
 
 Note that leaving the app deployed on Modal doesn't cost you anything! Modal apps are serverless and scale to 0 when not in use.
