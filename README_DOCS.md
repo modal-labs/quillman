@@ -10,13 +10,13 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 
 ![Quillman](https://github.com/user-attachments/assets/afda5874-8509-4f56-9f25-d734b8f1c40a)
 
-Everything — the React frontend and the model backend — is deployed serverlessly, allowing it to automatically scale and ensuring you only pay for the compute you use. 
+Everything — from the React frontend to the model backend — is deployed serverlessly on Modal, allowing it to automatically scale and ensuring you only pay for the compute you use. 
 
-This post provides a high-level walkthrough of the [github repo](https://github.com/modal-labs/quillman). We’re looking to add more models and features to this as time goes on, and contributions are welcome!
+This page provides a high-level walkthrough of the [GitHub repo](https://github.com/modal-labs/quillman).
 
 ## Code overview
 
-Traditionally, building a bidirectional streaming web application as compute-heavy as QuiLLMan would take a lot of work, and is especially difficult to make it robust and scale to handle many concurrent users.
+Traditionally, building a bidirectional streaming web application as compute-heavy as QuiLLMan would take a lot of work, and it's especially difficult to make it robust and scale to handle many concurrent users.
 
 But with Modal, it’s as simple as writing two different classes and running a CLI command.
 
@@ -106,7 +106,7 @@ The frontend is a static React app, found in the  `src/frontend` directory and s
 
 We use the [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) to record audio from the user's microphone and playback audio responses from the model. 
 
-For efficient audio transmission, we use the [Opus codec](https://opus-codec.org/) to compress audio across the network. Opus recording and playback are supported by the [opus-recorder](https://github.com/chris-rudmin/opus-recorder) and [ogg-opus-decoder](https://github.com/eshaz/wasm-audio-decoders/tree/master/src/ogg-opus-decoder) libraries.
+For efficient audio transmission, we use the [Opus codec](https://opus-codec.org/) to compress audio across the network. Opus recording and playback are supported by the [`opus-recorder`](https://github.com/chris-rudmin/opus-recorder) and [`ogg-opus-decoder`](https://github.com/eshaz/wasm-audio-decoders/tree/master/src/ogg-opus-decoder) libraries.
 
 To serve the frontend assets, run this command from the root of the repo.
 ```shell
