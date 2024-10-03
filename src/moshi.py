@@ -33,7 +33,6 @@ with image.imports():
     gpu="A10G",
     container_idle_timeout=300,
     timeout=600,
-    allow_concurrent_inputs=1,  # websocket connection must be unique to avoid GPU conflicts
 )
 class Moshi:
     @modal.build()

@@ -10,7 +10,7 @@ You can find the demo live [here](https://modal-labs--quillman-web.modal.run/).
 
 ![Quillman](https://github.com/user-attachments/assets/afda5874-8509-4f56-9f25-d734b8f1c40a)
 
-Everything — from the React frontend to the model backend — is deployed serverlessly on Modal, allowing it to automatically scale and ensuring you only pay for the compute you use. 
+Everything — from the React frontend to the model backend — is deployed serverlessly on Modal, allowing it to automatically scale and ensuring you only pay for the compute you use.
 
 This page provides a high-level walkthrough of the [GitHub repo](https://github.com/modal-labs/quillman).
 
@@ -45,26 +45,27 @@ Using a streaming model introduces a few challenges not normally seen in inferen
 1. The model is *stateful*, meaning it maintains context of the conversation so far. This means a model instance cannot be shared between user conversations, so we must run a unique GPU per user session, which is normally not an easy feat!
 2. The model is *streaming*, so the interface around it is not as simple as a POST request. We must find a way to stream audio data in and out, and do it fast enough for seamless playback.
 
-We solve both of these in `src/moshi.py`, using a few Modal features:
+We solve both of these in `src/moshi.py`, using a few Modal features.
 
-To solve statefulness, we maintain a 1:1 mapping of users to GPUs simply by limiting concurrent connections to one, with the `allow_concurrent_inputs` parameter.
+To solve statefulness, we just spin up a new GPU per concurrent user.
+That's easy with Modal!
 
 ```python
 @app.cls(
     image=image,
     gpu="A10G",
-    # ...,
-    allow_concurrent_inputs=1, # ensure only one user at a time
+    container_idle_timeout=300,
+    ...
 )
 class Moshi:
     # ...
 ```
 
-With this setting, if a new user connects, a new GPU instance is created!  When any user disconnects, the state of their model is reset and that GPU instance is returned to the warm pool for re-use. Be aware that a GPU per user is not going to be cheap, but it's the simplest way to ensure user sessions are isolated and GPU resources are not contested.
+With this setting, if a new user connects, a new GPU instance is created! When any user disconnects, the state of their model is reset and that GPU instance is returned to the warm pool for re-use (for up to 300 seconds). Be aware that a GPU per user is not going to be cheap, but it's the simplest way to ensure user sessions are isolated.
 
-For solving streaming, we use FastAPI's support for bidirectional websockets. This allows clients to establish a single connection at the start of their session, and stream audio data both ways.
+For streaming, we use FastAPI's support for bidirectional websockets. This allows clients to establish a single connection at the start of their session, and stream audio data both ways.
 
-Just as a FastAPI server can run from a Modal function, it can also be attached to a Modal class method, allowing us to couple a prewarmed Moshi model to a websocket session. 
+Just as a FastAPI server can run from a Modal function, it can also be attached to a Modal class method, allowing us to couple a prewarmed Moshi model to a websocket session.
 
 ```python
     @modal.asgi_app()
@@ -84,7 +85,7 @@ Just as a FastAPI server can run from a Modal function, it can also be attached 
                     while True:
                         data = await ws.receive_bytes()
                         # send data into inference stream...
-                
+
                 async def send_loop():
                     while True:
                         await asyncio.sleep(0.001)
@@ -104,7 +105,7 @@ In the terminal output, you'll find a URL for creating a websocket connection.
 
 The frontend is a static React app, found in the  `src/frontend` directory and served by `src/app.py`.
 
-We use the [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) to record audio from the user's microphone and playback audio responses from the model. 
+We use the [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) to record audio from the user's microphone and playback audio responses from the model.
 
 For efficient audio transmission, we use the [Opus codec](https://opus-codec.org/) to compress audio across the network. Opus recording and playback are supported by the [`opus-recorder`](https://github.com/chris-rudmin/opus-recorder) and [`ogg-opus-decoder`](https://github.com/eshaz/wasm-audio-decoders/tree/master/src/ogg-opus-decoder) libraries.
 
