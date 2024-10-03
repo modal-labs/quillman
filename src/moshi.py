@@ -98,6 +98,10 @@ class Moshi:
 
         web_app = FastAPI()
 
+        @web_app.get("/status")
+        async def status():
+            return Response(status_code=200)
+
         @web_app.websocket("/ws")
         async def websocket(ws: WebSocket):
             with torch.no_grad():

@@ -6,12 +6,30 @@ from pathlib import Path
 
 import os
 import aiohttp
+import time
 
-endpoint = "wss://modal-labs--quillman-moshi-web-dev.modal.run/ws"
+endpoint = "wss://modal-labs--quillman-moshi-web-dev.modal.run/"
 
 shutdown_flag = asyncio.Event()
 
+WARMUP_TIMEOUT = 60 # give server 60 seconds to warm up
+async def ensure_server_ready():
+    deadline = time.time() + WARMUP_TIMEOUT
+    async with aiohttp.ClientSession() as session:
+        while time.time() < deadline:
+            try:
+                print("Checking server status...")
+                resp = await session.get(endpoint + "status")
+                if resp.status == 200:
+                    return
+            except Exception as e:
+                print("Error while checking server status:", e)
+                await asyncio.sleep(5)
+                pass
+
 async def run():
+    await ensure_server_ready()
+
     send_chunks = []
     recv_chunks = []
 
@@ -22,9 +40,9 @@ async def run():
             data = f.read()
             send_chunks.append(data)
 
-    print("Connecting to", endpoint)
+    print("Connecting to", endpoint + "ws")
     async with aiohttp.ClientSession() as session:
-        async with session.ws_connect(endpoint) as ws:
+        async with session.ws_connect(endpoint + "ws") as ws:
             print("Connection established.")
             
             async def send_loop():

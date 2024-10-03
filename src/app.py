@@ -9,7 +9,6 @@ from .common import app
 
 static_path = Path(__file__).with_name("frontend").resolve()
 
-
 @app.function(
     mounts=[modal.Mount.from_local_dir(static_path, remote_path="/assets")],
     container_idle_timeout=600,
