@@ -1,4 +1,4 @@
-# QuiLLMan: Voice Chat with LLMs
+# QuiLLMan: Voice Chat with Moshi
 
 [QuiLLMan](https://github.com/modal-labs/quillman) is a complete voice chat application built on Modal: you speak and the chatbot speaks back!
 
