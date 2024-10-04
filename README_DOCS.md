@@ -42,8 +42,9 @@ Kyutai Lab's [Moshi](https://github.com/kyutai-labs/moshi) bundles all modalitie
 Under the hood, Moshi uses the [Mimi](https://huggingface.co/kyutai/mimi) streaming encoder/decoder model to maintain an unbroken stream of audio in and out. The encoded audio is processed by a [speech-text foundation model](https://huggingface.co/kyutai/moshiko-pytorch-bf16), which uses an internal monologue to determine when and how to respond.
 
 Using a streaming model introduces a few challenges not normally seen in inference backends:
-1. The model is *stateful*, meaning it maintains context of the conversation so far. This means a model instance cannot be shared between user conversations, so we must run a unique GPU per user session, which is normally not an easy feat!
-2. The model is *streaming*, so the interface around it is not as simple as a POST request. We must find a way to stream audio data in and out, and do it fast enough for seamless playback.
+
+1. The model is _stateful_, meaning it maintains context of the conversation so far. This means a model instance cannot be shared between user conversations, so we must run a unique GPU per user session, which is normally not an easy feat!
+2. The model is _streaming_, so the interface around it is not as simple as a POST request. We must find a way to stream audio data in and out, and do it fast enough for seamless playback.
 
 We solve both of these in `src/moshi.py`, using a few Modal features.
 
@@ -93,7 +94,7 @@ Just as a FastAPI server can run from a Modal function, it can also be attached 
                         # send inference output to user ...
 ```
 
-To run a [development server]((https://modal.com/docs/guide/webhooks#developing-with-modal-serve)) for the Moshi module, run this command from the root of the repo.
+To run a [development server](https://modal.com/docs/guide/webhooks#developing-with-modal-serve) for the Moshi module, run this command from the root of the repo.
 
 ```shell
 modal serve src.moshi
@@ -103,13 +104,14 @@ In the terminal output, you'll find a URL for creating a websocket connection.
 
 ### React Frontend
 
-The frontend is a static React app, found in the  `src/frontend` directory and served by `src/app.py`.
+The frontend is a static React app, found in the `src/frontend` directory and served by `src/app.py`.
 
 We use the [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) to record audio from the user's microphone and playback audio responses from the model.
 
 For efficient audio transmission, we use the [Opus codec](https://opus-codec.org/) to compress audio across the network. Opus recording and playback are supported by the [`opus-recorder`](https://github.com/chris-rudmin/opus-recorder) and [`ogg-opus-decoder`](https://github.com/eshaz/wasm-audio-decoders/tree/master/src/ogg-opus-decoder) libraries.
 
 To serve the frontend assets, run this command from the root of the repo.
+
 ```shell
 modal serve src.app
 ```
