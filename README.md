@@ -1,4 +1,4 @@
-# QuiLLMan: Voice Chat with LLMs
+# QuiLLMan: Voice Chat with Moshi
 
 A complete voice chat app powered by a speech-to-speech language model and bidirectional streaming.
 
