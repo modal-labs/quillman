@@ -12,6 +12,7 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "moshi==0.1.0",
+        "fastapi==0.115.5",
         "huggingface_hub==0.24.7",
         "hf_transfer==0.1.8",
         "sphn==0.1.4",
