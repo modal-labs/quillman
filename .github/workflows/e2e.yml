@@ -12,16 +12,16 @@ jobs:
   e2etest:
     name: e2etest
     runs-on: ubuntu-24.04
-    env:
-      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-      MODAL_ENVIRONMENT: main
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
       - uses: ./.github/actions/setup
       - name: Run testing script
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          MODAL_ENVIRONMENT: main
         run: |
           pip install -r requirements/requirements-dev.txt
           modal token set --token-id $MODAL_TOKEN_ID --token-secret $MODAL_TOKEN_SECRET
