@@ -11,7 +11,7 @@ on:
 jobs:
   e2etest:
     name: e2etest
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
