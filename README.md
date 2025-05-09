@@ -31,7 +31,7 @@ This repo is meant to serve as a starting point for your own language model-base
 
 The Moshi server is a [Modal class](https://modal.com/docs/reference/modal.Cls#modalcls) module to load the models and maintain streaming state, with a [FastAPI](https://fastapi.tiangolo.com/) http server to expose a websocket interface over the internet.
 
-To run a [development server](<(https://modal.com/docs/guide/webhooks#developing-with-modal-serve)>) for the Moshi module, run this command from the root of the repo.
+To run a [development server](https://modal.com/docs/guide/webhooks#developing-with-modal-serve) for the Moshi module, run this command from the root of the repo.
 
 ```shell
 modal serve -m src.moshi
@@ -65,7 +65,7 @@ And begin speaking! Be sure to have your microphone and speakers enabled.
 
 The http server at `src/app.py` is a second [FastAPI](https://fastapi.tiangolo.com/) app, for serving the frontend as static files.
 
-A [development server](<(https://modal.com/docs/guide/webhooks#developing-with-modal-serve)>) can be run with:
+A [development server](https://modal.com/docs/guide/webhooks#developing-with-modal-serve) can be run with:
 
 ```shell
 modal serve src.app
