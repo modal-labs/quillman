@@ -1,0 +1,61 @@
+name: Detect and Check Modal Scripts
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  generate-matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Find Modal scripts
+        id: set-matrix
+        run: |
+          chmod +x .github/scripts/find_modal_examples.py
+          MATRIX=$(python .github/scripts/find_modal_examples.py)
+          echo "Found scripts ${MATRIX}"
+          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
+
+  test:
+    needs: generate-matrix
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup
+
+      - name: Authenticate with Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal token set --token-id $MODAL_TOKEN_ID --token-secret $MODAL_TOKEN_SECRET
+
+      - name: Run ${{ matrix.example }} with modal
+        run: |
+          set -o pipefail
+          modal serve ${{ matrix.example }} 2>&1 | tee output.log
+
+      - name: Check for deprecation warnings
+        run: |
+          if grep -i "deprecationwarning" output.log; then
+            echo "❌ Deprecation warning found in ${{ matrix.example }}"
+            exit 1
+          fi
