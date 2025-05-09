@@ -8,6 +8,8 @@ import time
 
 from .common import app
 
+model_cache = modal.Volume.from_name("moshi-model-cache", create_if_missing=True)
+
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
@@ -32,11 +34,12 @@ with image.imports():
 @app.cls(
     image=image,
     gpu="A10G",
-    container_idle_timeout=300,
+    scaledown_window=300,
     timeout=600,
+    volumes={"/cache": model_cache},
 )
 class Moshi:
-    @modal.build()
+    @modal.enter()
     def download_model(self):
         hf_hub_download(loaders.DEFAULT_REPO, loaders.MOSHI_NAME)
         hf_hub_download(loaders.DEFAULT_REPO, loaders.MIMI_NAME)

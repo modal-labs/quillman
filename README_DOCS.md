@@ -55,7 +55,7 @@ That's easy with Modal!
 @app.cls(
     image=image,
     gpu="A10G",
-    container_idle_timeout=300,
+    scaledown_window=300,
     ...
 )
 class Moshi:
