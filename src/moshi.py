@@ -19,7 +19,12 @@ image = (
         "hf_transfer==0.1.8",
         "sphn==0.1.4",
     )
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
+    .env(
+        {
+            "HF_HUB_ENABLE_HF_TRANSFER": "1",
+            "HF_HOME": "/models",
+        }
+    )
 )
 
 with image.imports():
