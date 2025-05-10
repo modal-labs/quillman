@@ -1,6 +1,7 @@
 """
 Main web application service. Serves the static frontend.
 """
+
 from pathlib import Path
 import modal
 from .moshi import Moshi  # makes modal deploy also deploy moshi
@@ -12,7 +13,7 @@ static_path = Path(__file__).with_name("frontend").resolve()
 
 @app.function(
     mounts=[modal.Mount.from_local_dir(static_path, remote_path="/assets")],
-    container_idle_timeout=600,
+    scaledown_window=600,
     timeout=600,
     allow_concurrent_inputs=100,
     image=modal.Image.debian_slim(python_version="3.11").pip_install(

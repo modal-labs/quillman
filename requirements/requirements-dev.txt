@@ -1,5 +1,5 @@
 -r requirements.txt
 sounddevice
 numpy
-sphn
+sphn==0.1.12
 aiohttp
