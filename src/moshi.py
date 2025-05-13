@@ -22,7 +22,7 @@ image = (
     .env(
         {
             "HF_HUB_ENABLE_HF_TRANSFER": "1",
-            "HF_HOME": "/models",
+            "HF_HOME": "/cache",
         }
     )
 )
