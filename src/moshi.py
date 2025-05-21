@@ -8,7 +8,10 @@ import time
 
 from .common import app
 
-model_cache = modal.Volume.from_name("moshi-model-cache", create_if_missing=True)
+# Store model weights in a volume to avoid downloading them on each call
+model_volume_path = "/models"
+model_volume = modal.Volume.from_name("moshi-model-cache", create_if_missing=True)
+
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -19,13 +22,9 @@ image = (
         "hf_transfer==0.1.8",
         "sphn==0.1.4",
     )
-    .env(
-        {
-            "HF_HUB_ENABLE_HF_TRANSFER": "1",
-            "HF_HOME": "/cache",
-        }
-    )
+    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1", "HF_HUB_CACHE": model_volume_path})
 )
+
 
 with image.imports():
     from huggingface_hub import hf_hub_download
@@ -41,14 +40,22 @@ with image.imports():
     gpu="A10G",
     scaledown_window=300,
     timeout=600,
-    volumes={"/cache": model_cache},
+    volumes={model_volume_path: model_volume},
 )
 class Moshi:
     @modal.enter()
     def download_model(self):
-        hf_hub_download(loaders.DEFAULT_REPO, loaders.MOSHI_NAME)
-        hf_hub_download(loaders.DEFAULT_REPO, loaders.MIMI_NAME)
-        hf_hub_download(loaders.DEFAULT_REPO, loaders.TEXT_TOKENIZER_NAME)
+        hf_hub_download(
+            loaders.DEFAULT_REPO, loaders.MOSHI_NAME, cache_dir=model_volume_path
+        )
+        hf_hub_download(
+            loaders.DEFAULT_REPO, loaders.MIMI_NAME, cache_dir=model_volume_path
+        )
+        hf_hub_download(
+            loaders.DEFAULT_REPO,
+            loaders.TEXT_TOKENIZER_NAME,
+            cache_dir=model_volume_path,
+        )
 
     @modal.enter()
     def enter(self):
