@@ -8,7 +8,8 @@ import time
 
 from .common import app
 
-model_cache = modal.Volume.from_name("moshi-model-cache", create_if_missing=True)
+model_path = "/models"
+model_volume_cache = modal.Volume.from_name("moshi-model-cache", create_if_missing=True)
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -22,7 +23,7 @@ image = (
     .env(
         {
             "HF_HUB_ENABLE_HF_TRANSFER": "1",
-            "HF_HOME": "/cache",
+            "HF_HUB_CACHE": model_path,
         }
     )
 )
@@ -41,7 +42,7 @@ with image.imports():
     gpu="A10G",
     scaledown_window=300,
     timeout=600,
-    volumes={"/cache": model_cache},
+    volumes={model_path: model_volume_cache},
 )
 class Moshi:
     @modal.enter()

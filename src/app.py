@@ -9,17 +9,16 @@ from .moshi import Moshi  # makes modal deploy also deploy moshi
 from .common import app
 
 static_path = Path(__file__).with_name("frontend").resolve()
+image = modal.Image.debian_slim(python_version="3.11").pip_install("fastapi==0.115.5")
+image = image.add_local_dir(static_path, "/assets")
 
 
 @app.function(
-    mounts=[modal.Mount.from_local_dir(static_path, remote_path="/assets")],
     scaledown_window=600,
     timeout=600,
-    allow_concurrent_inputs=100,
-    image=modal.Image.debian_slim(python_version="3.11").pip_install(
-        "fastapi==0.115.5"
-    ),
+    image=image,
 )
+@modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def web():
     from fastapi import FastAPI

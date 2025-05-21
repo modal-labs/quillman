@@ -23,4 +23,4 @@ jobs:
           MODAL_ENVIRONMENT: main
         run: |
           modal token set --token-id $MODAL_TOKEN_ID --token-secret $MODAL_TOKEN_SECRET
-          modal deploy src.app
+          modal deploy -m src.app
