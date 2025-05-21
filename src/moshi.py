@@ -7,6 +7,7 @@ import asyncio
 import time
 
 from .common import app
+from .prompts.custom_instructions import DEFAULT_INSTRUCTIONS
 
 model_cache = modal.Volume.from_name("moshi-model-cache", create_if_missing=True)
 
@@ -69,6 +70,10 @@ class Moshi:
             top_k=250,
             top_k_text=25,
         )
+        
+        # Set the custom instructions for the model to follow
+        print("Loading custom instructions:", DEFAULT_INSTRUCTIONS[:100] + "...")
+        self.custom_instructions = DEFAULT_INSTRUCTIONS
 
         self.mimi.streaming_forever(1)
         self.lm_gen.streaming_forever(1)
